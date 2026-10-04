@@ -32,7 +32,25 @@ grep "Exiting batchmode successfully" "$PROJECT/Builds/validation/compile.log"
   -testResults "$PROJECT/Builds/validation/editmode.xml" -logFile "$PROJECT/Builds/validation/editmode.log"
 ```
 
-Do not pass `-quit` with `-runTests`. Required cases: `docs/TOUCH_AND_SETTINGS.md` §6 (1–7).
+Do not pass `-quit` with `-runTests`. Required cases: `docs/TOUCH_AND_SETTINGS.md` §6 (1–7)
+and, since dev.2, the loader cases in `Assets/IK/Tests/EditMode/MugenLoaderTests.cs`.
+
+### Regenerating the loader fixtures (only when a format changes)
+
+```sh
+python3 tools/sff_dump.py assets/screenpack/chars/kfm/kfm.sff \
+  -o unity/Assets/IK/Tests/EditMode/Fixtures/kfm_sff.json
+python3 tools/sff_dump.py assets/screenpack/chars/kfm/intro.sff \
+  -o unity/Assets/IK/Tests/EditMode/Fixtures/kfm_intro_sff.json
+python3 tools/sff_dump.py assets/screenpack/font/arcade.sff --stage \
+  -o unity/Assets/IK/Tests/EditMode/Fixtures/arcade_sff.json
+python3 tools/sff_dump.py assets/screenpack/data/fightfx.sff --stage \
+  -o unity/Assets/IK/Tests/EditMode/Fixtures/fightfx_sff.json
+```
+
+`tools/sff_dump.py` is the independent Python reference decoder; `--png DIR` also writes the
+decoded sprites as PNGs for eyeballing. Never regenerate a fixture to make a failing test
+pass — first prove the C# decoder is right.
 
 ## 3. Rendered UI fixture
 

@@ -89,6 +89,18 @@ namespace IK.UI {
             { "layout.hint",               new[] { "اسحب الأزرار، والمقياس بالشريط", "Drag the buttons, resize with the slider" } },
             { "layout.resetDefault",       new[] { "استعادة الافتراضي", "Reset to default" } },
             { "layout.invalid",            new[] { "تخطيط غير صالح", "Invalid layout" } },
+            { "menu.viewer",               new[] { "عارض الشخصية", "Character viewer" } },
+            { "viewer.prev",               new[] { "السابقة", "Prev" } },
+            { "viewer.next",               new[] { "التالية", "Next" } },
+            { "viewer.play",               new[] { "تشغيل", "Play" } },
+            { "viewer.pause",              new[] { "إيقاف", "Pause" } },
+            { "viewer.palette",            new[] { "لوحة الألوان", "Palette" } },
+            { "viewer.boxes",              new[] { "مربعات الإصابة", "Clsn boxes" } },
+            { "viewer.sound",              new[] { "صوت", "Sound" } },
+            { "viewer.failed",             new[] { "تعذّر تحميل الشخصية", "Character load failed" } },
+            { "viewer.hint",               new[] { "تصفّح حركات الشخصية", "Browse the character's actions" } },
+            { "viewer.stats",              new[] { "{0} سبرايت · {1} لوحة ألوان · {2} حركة · {3} صوت · حُمّلت في {4} مل.ث", "{0} sprites · {1} palettes · {2} actions · {3} sounds · loaded in {4} ms" } },
+            { "viewer.info",               new[] { "حركة {0} · عنصر {1}/{2} · سبرايت {3} · زمن {4} · Clsn1 {5} · Clsn2 {6}", "Action {0} · element {1}/{2} · sprite {3} · time {4} · Clsn1 {5} · Clsn2 {6}" } },
             { "about.credits",             new[] { "شكر وتقدير", "Credits" } },
         };
 

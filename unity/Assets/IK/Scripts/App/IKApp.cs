@@ -5,7 +5,7 @@ using IK.Settings;
 using IK.UI;
 
 namespace IK.App {
-    public enum Screen_ { Main, InputTest, Settings, Layout }
+    public enum Screen_ { Main, InputTest, Settings, Layout, Viewer }
 
     /// <summary>
     /// dev.1 application shell: builds every screen from code, owns the canvases and the
@@ -24,6 +24,7 @@ namespace IK.App {
         public MainMenu Menu { get; private set; }
         public SettingsMenu Settings { get; private set; }
         public LayoutEditor Layout { get; private set; }
+        public CharViewer Viewer { get; private set; }
         public InputDisplay Display { get; private set; }
         public Screen_ Current { get; private set; } = Screen_.Main;
 
@@ -64,12 +65,17 @@ namespace IK.App {
             Menu.Build(root);
             Menu.onInputTest = () => Show(Screen_.InputTest);
             Menu.onSettings = () => Show(Screen_.Settings);
+            Menu.onViewer = () => Show(Screen_.Viewer);
 
             Settings = gameObject.AddComponent<SettingsMenu>();
             Settings.Build(root);
             Settings.onBack = () => Show(Screen_.Main);
             Settings.onEditLayout = () => Show(Screen_.Layout);
             Settings.onChanged = RebuildTouch;
+
+            Viewer = gameObject.AddComponent<CharViewer>();
+            Viewer.Build(root);
+            Viewer.onBack = () => Show(Screen_.Main);
 
             Layout = gameObject.AddComponent<LayoutEditor>();
             Layout.Build(root);
@@ -96,6 +102,7 @@ namespace IK.App {
             Menu.SetVisible(screen == Screen_.Main);
             Settings.SetVisible(screen == Screen_.Settings);
             Layout.SetVisible(screen == Screen_.Layout);
+            Viewer.SetVisible(screen == Screen_.Viewer);
             Display.gameObject.SetActive(screen == Screen_.InputTest);
             bool wantTouch = screen == Screen_.InputTest;
             Router.allowTouchControls = wantTouch;
