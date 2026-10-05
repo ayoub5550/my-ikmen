@@ -253,6 +253,8 @@ namespace IK.Core {
                     case "guard.sparkangle": case "guard.sparkscale":
                     case "hitsound.channel": case "guardsound.channel":
                     case "dizzypoints": case "guardpoints": case "redlife": case "score":
+                    case "forcenofall": case "fall.envshake.mul": case "envshake.mul":
+                    case "guard.dist.z": case "attack.z.width": case "p2clsncheck": case "p2clsnrequire":
                         break;
                     default:
                         if (!key.StartsWith("trigger") && key != "type" && key.Length > 0)

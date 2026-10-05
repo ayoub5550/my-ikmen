@@ -53,6 +53,9 @@ namespace IK.Core {
 
         public bool Alive => Life > 0;
         public int LifeMax => Const.Life;
+        public int PowerMax = 3000;
+        /// <summary>The other fighter, or null while running alone (dev.3 training screen).</summary>
+        public Fighter Opponent => Engine != null ? Engine.Opponent(this) : null;
 
         // ---- per-tick bookkeeping ----------------------------------------------
 
@@ -208,8 +211,6 @@ namespace IK.Core {
 
             // juggling: an air hit costs the attacker juggle points
             if (air && attacker != null && !guarded) attacker.JugglePoints -= hd.AirJuggle;
-
-            HitPauseTime = Math.Max(HitPauseTime, Ghv.HitShakeTime);
 
             // state change
             if (!guarded && hd.P2StateNo >= 0 && attacker != null) {
