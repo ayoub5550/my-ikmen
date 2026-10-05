@@ -119,6 +119,9 @@ namespace IK.Core {
                 }
             }
             if (Camera != null) Camera.Reset();
+            // Go `Stage.reset()` runs at the start of a round when the stage asks for it
+            // (`[BGdef] resetbg`), so the background animations restart with the round.
+            if (Stage != null && Stage.ResetBG) Stage.Reset();
         }
 
         /// <summary>Seconds left on the clock, or -1 when the timer is disabled.</summary>
@@ -170,7 +173,10 @@ namespace IK.Core {
             if (Camera != null && Players[0] != null && Players[1] != null)
                 Camera.Update(Players[0].PosX, Players[1].PosX);
 
-            // 8. round state machine and the bars
+            // 8. the stage's own animations and scrolling state (Go `Stage.action`)
+            if (Stage != null) Stage.Tick();
+
+            // 9. round state machine and the bars
             StepRound();
             StepBars();
         }
