@@ -232,6 +232,10 @@ namespace IK.UI {
                 try { var b = data.Read("fight.snd"); if (b != null) fightSnd = SndFile.Load(b); }
                 catch (Exception e) { UnityEngine.Debug.LogWarning("[IK] fight.snd load failed: " + e.Message); }
             }
+            if (Fighter.CommonZss == null) {
+                try { var b = data.Read("common1.cns.zss"); if (b != null) Fighter.CommonZss = ZssFile.Parse(b); }
+                catch (Exception e) { UnityEngine.Debug.LogWarning("[IK] common1.cns.zss failed: " + e.Message); }
+            }
             if (commonSnd == null) {
                 try { var b = data.Read("common.snd"); if (b != null) commonSnd = SndFile.Load(b); }
                 catch (Exception) { }
@@ -245,19 +249,8 @@ namespace IK.UI {
             LoadedChar lc;
             if (charCache.TryGetValue(key, out lc)) return lc;
             var chr = MugenCharacter.Load(src, defFile);
-            var states = CnsFile.Parse(src.Read(chr.CnsFile));
-            // extra state files ([Files] st, st1..st9, stcommon) after the main one
-            var files = chr.Def["files"];
-            if (files != null) {
-                foreach (var k in new[] { "st", "st1", "st2", "st3", "st4", "st5", "st6", "st7", "st8", "st9" }) {
-                    string f = MugenDef.Unquote(files.Get(k));
-                    if (string.IsNullOrEmpty(f) || string.Equals(f, chr.CnsFile, StringComparison.OrdinalIgnoreCase)) continue;
-                    var b = src.Read(f);
-                    if (b != null) { var extra = CnsFile.Parse(b); foreach (var s in extra.States) if (states.Get(s.No) == null) { states.States.Add(s); states.ByNumber[s.No] = s; } }
-                }
-            }
             var cmd = CmdFile.Parse(src.Read(chr.CmdFile));
-            states.Merge(cmd.States);
+            var states = chr.LoadStates(src, cmd);
             lc = new LoadedChar { Chr = chr, States = states, Cmd = cmd };
             charCache[key] = lc;
             return lc;
@@ -579,16 +572,16 @@ namespace IK.UI {
                             var ai = kv.Value;
                             float k = 1f - kv.Key / (float)Mathf.Max(2, f.After.Length / Mathf.Max(1, f.After.FrameGap) + 1);
                             var fx = AfterImageFx(f.After, kv.Key);
-                            used = DrawSprite(used, spriteLayer, SpriteOwnerChar(f), PaletteOf(f), ai.Frame, ai.PosX, ai.PosY,
-                                              ai.Facing, 1, 1f, 1f, ai.Angle, f.After.Trans, (int)(200 * k), 255, fx, camera, false);
+                            used = DrawSprite(used, spriteLayer, SpriteOwnerChar(f), PaletteOf(f), ai.Frame, ai.PosX * f.Scl, ai.PosY * f.Scl,
+                                              ai.Facing, 1, f.Scl, f.Scl, ai.Angle, f.After.Trans, (int)(200 * k), 255, fx, camera, false);
                         }
                     }
                     var frame = f.Anim != null ? f.Anim.CurrentFrame : null;
                     var pfx = CombinedFx(f.PalFx, f != Engine.SuperPauseOwner);
                     TransType tt = f.TransOn ? f.TransMode : TransType.Default;
                     used = DrawSprite(used, spriteLayer, SpriteOwnerChar(f), PaletteOf(f), frame,
-                                      f.PosX + f.DrawOffsetX * f.Facing, f.PosY + f.DrawOffsetY, f.Facing, 1,
-                                      f.AngleDrawOn ? f.DrawScaleX : 1f, f.AngleDrawOn ? f.DrawScaleY : 1f,
+                                      (f.PosX + f.DrawOffsetX * f.Facing) * f.Scl, (f.PosY + f.DrawOffsetY) * f.Scl, f.Facing, 1,
+                                      (f.AngleDrawOn ? f.DrawScaleX : 1f) * f.Scl, (f.AngleDrawOn ? f.DrawScaleY : 1f) * f.Scl,
                                       f.AngleDrawOn ? f.DrawAngle : 0f, tt, f.TransSrc, f.TransDst, pfx, camera, false);
                     continue;
                 }
@@ -598,8 +591,9 @@ namespace IK.UI {
                     var chr = e.Source == SpriteSource.FightFx ? null : SpriteOwnerChar(e.Owner);
                     var pfx = CombinedFx(e.PalFx.Active ? e.PalFx : (e.OwnPal || e.Owner == null ? null : e.Owner.PalFx), !e.IsSystem && e.Owner != Engine.SuperPauseOwner);
                     float x = e.ScreenSpace ? e.PosX + camera : e.PosX;
+                    float es = chr != null && e.Owner != null ? e.Owner.Scl : Engine.ScreenWidth / 320f;
                     used = DrawSprite(used, e.OnTop ? overlayLayer : spriteLayer, chr, chr != null ? PaletteOf(e.Owner) : null, frame,
-                                      x, e.PosY, e.Facing, e.VFacing, e.ScaleX, e.ScaleY, e.Angle, e.Trans, e.AlphaSrc, e.AlphaDst,
+                                      x, e.PosY, e.Facing, e.VFacing, e.ScaleX * es, e.ScaleY * es, e.Angle, e.Trans, e.AlphaSrc, e.AlphaDst,
                                       pfx, camera, e.ScreenSpace);
                     continue;
                 }
@@ -609,8 +603,9 @@ namespace IK.UI {
                     var src = p.State == Projectile.Phase.Flying ? p.Source : p.State == Projectile.Phase.Hit ? p.HitSource :
                               p.State == Projectile.Phase.Canceled ? p.CancelSource : p.RemSource;
                     var chr = src == SpriteSource.FightFx ? null : SpriteOwnerChar(p.Owner);
+                    float ps = chr != null ? 1f : Engine.ScreenWidth / 320f / (p.Owner != null ? p.Owner.Scl : 1f);
                     used = DrawSprite(used, spriteLayer, chr, chr != null ? PaletteOf(p.Owner) : null, frame, p.PosX, p.PosY,
-                                      p.Facing, 1, p.ScaleX, p.ScaleY, 0f, TransType.Default, 255, 0,
+                                      p.Facing, 1, p.ScaleX * ps, p.ScaleY * ps, 0f, TransType.Default, 255, 0,
                                       CombinedFx(p.PalFx.Active ? p.PalFx : null, true), camera, false);
                 }
             }

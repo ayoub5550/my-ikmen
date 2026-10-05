@@ -208,12 +208,13 @@ namespace IK.Core {
             if (me == null || enemy == null) return CmdKey.None;
             if (engine != null && engine.State != RoundState.Fighting) { queue.Clear(); holdTimer = 0; return CmdKey.None; }
 
-            float dist = Math.Abs(enemy.PosX - me.PosX) - me.Const.GroundFront - enemy.Const.GroundFront;
-            bool threat = enemy.Move == MoveType.Attack && enemy.HitDefActive && dist < enemy.Const.AttackDist * 0.8f;
+            // distances in my own units (characters may use different localcoords)
+            float dist = (Math.Abs(enemy.WorldX - me.WorldX) - me.Const.GroundFront * me.Scl - enemy.Const.GroundFront * enemy.Scl) / me.Scl;
+            bool threat = enemy.Move == MoveType.Attack && enemy.HitDefActive && dist < enemy.Const.AttackDist * enemy.Scl / me.Scl * 0.8f;
             if (engine != null)
                 foreach (var p in engine.Projectiles)
                     if (p.State == Projectile.Phase.Flying && p.Owner != null && p.Owner.PlayerNo != me.PlayerNo &&
-                        Math.Abs(p.PosX - me.PosX) < 120f) threat = true;
+                        Math.Abs(p.PosX - me.WorldX) < 120f * me.Scl) threat = true;
 
             // a combo in progress: keep the planned keys going
             if (queue.Count > 0) return queue.Dequeue();

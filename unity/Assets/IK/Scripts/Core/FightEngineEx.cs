@@ -175,8 +175,8 @@ namespace IK.Core {
                 if (e.Anim == null) { e.Removed = true; continue; }
                 var bt = e.BindTarget;
                 if (e.BindTime != 0 && bt != null && !e.ScreenSpace && !bt.Destroyed) {
-                    e.PosX = bt.PosX + e.OffX * bt.Facing;
-                    e.PosY = bt.PosY + e.OffY;
+                    e.PosX = bt.WorldX + e.OffX * bt.Facing;
+                    e.PosY = bt.WorldY + e.OffY;
                     if (e.BindTime > 0) e.BindTime--;
                 } else {
                     e.PosX += e.VelX;
@@ -302,7 +302,7 @@ namespace IK.Core {
                     float front = b.Type == StateType.Air ? b.Const.AirFront : b.Const.GroundFront;
                     int sn = guarded ? hd.GuardSparkNo : hd.SparkNo;
                     if (sn >= 0) AddSpark(p.Owner, sn, guarded ? hd.GuardSparkFromChar : hd.SparkFromChar,
-                                          b.PosX - p.Facing * front + p.Facing * hd.SparkXY[0], p.PosY + hd.SparkXY[1], p.Facing);
+                                          b.WorldX - p.Facing * front * b.Scl + p.Facing * hd.SparkXY[0] * p.Owner.Scl, p.PosY + hd.SparkXY[1] * p.Owner.Scl, p.Facing);
                     var snd = guarded ? hd.GuardSound : hd.HitSound;
                     if (snd[0] >= 0) p.Owner.QueueSound(!(guarded ? hd.GuardSoundFromChar : hd.HitSoundFromChar), snd[0], snd[1]);
                     p.HitPause = Math.Max(0, guarded ? hd.GuardPauseTime[0] : hd.PauseTime[0]);
@@ -336,7 +336,7 @@ namespace IK.Core {
             a.HitPauseTime = Math.Max(0, r.PauseTime[1]);
             a.Ghv.HitId = r.Id;
             if (!b.Targets.Contains(a)) b.Targets.Add(a);
-            if (r.SparkNo >= 0) AddSpark(b, r.SparkNo, r.SparkFromChar, (a.PosX + b.PosX) / 2f, b.PosY + r.SparkXY[1], b.Facing);
+            if (r.SparkNo >= 0) AddSpark(b, r.SparkNo, r.SparkFromChar, (a.WorldX + b.WorldX) / 2f, b.WorldY + r.SparkXY[1] * b.Scl, b.Facing);
             if (r.HitSound[0] >= 0) b.QueueSound(!r.HitSoundFromChar, r.HitSound[0], r.HitSound[1]);
             if (r.P1StateNo >= 0) b.ChangeState(r.P1StateNo, "reversaldef");
             if (r.P2StateNo >= 0) {

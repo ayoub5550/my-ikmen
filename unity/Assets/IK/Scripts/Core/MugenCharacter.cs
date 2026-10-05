@@ -71,6 +71,61 @@ namespace IK.Core {
             return c;
         }
 
+        /// <summary>
+        /// dev.5: every state file of the character merged into one: `cns` (constants and
+        /// states), then `st`, `st1`..`st9` — `.cns` or Ikemen `.zss` — and the `.cmd`'s
+        /// `[Statedef -1]`. The first definition of a state number wins, as in Ikemen
+        /// (`stcommon` is replaced by the engine's native common states).
+        /// </summary>
+        public IK.Core.CnsFile LoadStates(IResourceSource source, CmdFile cmd) {
+            IK.Core.CnsFile states = null;
+            var main = source.Read(CnsFile);
+            states = (CnsFile != null && CnsFile.EndsWith(".zss", StringComparison.OrdinalIgnoreCase) ? null : ParseStateFile(CnsFile, main))
+                     ?? new IK.Core.CnsFile { Header = new MugenDef() };
+            var files = Def["files"];
+            var zss = new System.Text.StringBuilder();
+            if (CnsFile != null && CnsFile.EndsWith(".zss", StringComparison.OrdinalIgnoreCase) && main != null)
+                zss.Append(MugenDef.DecodeText(main)).Append('\n');
+            if (files != null) {
+                foreach (var k in new[] { "st", "st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7", "st8", "st9" }) {
+                    string f = MugenDef.Unquote(files.Get(k));
+                    if (string.IsNullOrEmpty(f) || string.Equals(f, CnsFile, StringComparison.OrdinalIgnoreCase)) continue;
+                    var b = source.Read(f);
+                    if (b == null) { Warnings.Add("state file not found: " + f); continue; }
+                    // ZSS files share their [Function]s: they are compiled together below
+                    if (f.EndsWith(".zss", StringComparison.OrdinalIgnoreCase)) { zss.Append(MugenDef.DecodeText(b)).Append('\n'); continue; }
+                    AddStates(states, IK.Core.CnsFile.Parse(b));
+                }
+            }
+            if (zss.Length > 0) AddStates(states, ZssFile.Parse(zss.ToString()));
+            if (cmd != null) {
+                foreach (var s in cmd.States.States) {
+                    var existing = states.Get(s.No);
+                    if (existing == null) { states.States.Add(s); states.ByNumber[s.No] = s; }
+                    else if (s.No == -1) existing.Controllers.AddRange(s.Controllers);   // .cmd -1 runs after the st -1
+                }
+            }
+            return states;
+        }
+
+        static void AddStates(IK.Core.CnsFile into, IK.Core.CnsFile extra) {
+            foreach (var s in extra.States) {
+                var existing = into.Get(s.No);
+                if (existing == null) { into.States.Add(s); into.ByNumber[s.No] = s; }
+                else if (s.No < 0) existing.Controllers.AddRange(s.Controllers);
+            }
+        }
+
+        static IK.Core.CnsFile ParseStateFile(string name, byte[] bytes) {
+            if (bytes == null) return null;
+            if (name != null && name.EndsWith(".zss", StringComparison.OrdinalIgnoreCase)) {
+                var z = ZssFile.Parse(bytes);
+                z.Header = new MugenDef();
+                return z;
+            }
+            return IK.Core.CnsFile.Parse(bytes);
+        }
+
         /// <summary>Action numbers in file order, so the viewer can walk them predictably.</summary>
         public IReadOnlyList<int> ActionNumbers => Air != null ? (IReadOnlyList<int>)Air.Order : Array.Empty<int>();
 

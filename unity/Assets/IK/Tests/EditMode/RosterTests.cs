@@ -56,14 +56,15 @@ namespace IK.Tests {
         public void Unsupported_content_is_filtered_out() {
             var r = ScreenpackRoster();
             r.Filter(CharProblem, StageProblem);
-            // ZSS characters (st = kfm.zss) and the 3D stages (model = ...) are dropped
-            Assert.AreEqual(1, r.Characters.Count);
-            Assert.AreEqual("chars/kfm720", r.Characters[0].CharGroup);
+            // dev.5: ZSS characters run (Core/ZssFile.cs); only the 3D stages (model = ...) are dropped
+            Assert.AreEqual(3, r.Characters.Count);
+            Assert.AreEqual("chars/kfm_zss", r.Characters[0].CharGroup);
+            Assert.AreEqual("chars/kfm720", r.Characters[1].CharGroup);
+            Assert.AreEqual("chars/kfm_zaxis", r.Characters[2].CharGroup);
             Assert.IsTrue(r.Cells[r.Cells.Count - 1].Random, "the random cell stays");
             Assert.AreEqual(6, r.Stages.Count);
             Assert.IsFalse(r.Stages.Exists(s => s.Def.StartsWith("stage3d")));
-            Assert.AreEqual(4, r.Skipped.Count);
-            StringAssert.Contains("ZSS", r.Skipped.Find(x => x.StartsWith("kfm_zss")));
+            Assert.AreEqual(2, r.Skipped.Count, string.Join("; ", r.Skipped));
             StringAssert.Contains("3D", r.Skipped.Find(x => x.StartsWith("stages/stage3d.def")));
         }
 
@@ -72,12 +73,15 @@ namespace IK.Tests {
             var r = GameRoster();
             r.Filter(CharProblem, StageProblem);
             Assert.AreEqual(0, r.Skipped.Count, string.Join("; ", r.Skipped));
-            Assert.AreEqual(3, r.Cells.Count);
-            Assert.AreEqual("chars/kfm", r.Cells[0].CharGroup);
-            Assert.AreEqual("kfm.def", r.Cells[0].CharDef);
+            Assert.AreEqual(5, r.Cells.Count);
+            Assert.AreEqual("chars/kfm_zss", r.Cells[0].CharGroup);
+            Assert.AreEqual("kfm_zss.def", r.Cells[0].CharDef);
             Assert.AreEqual("chars/kfm720", r.Cells[1].CharGroup);
             CollectionAssert.AreEqual(new[] { "stage0-720.def" }, r.Cells[1].Stages);
-            Assert.IsTrue(r.Cells[2].Random);
+            Assert.AreEqual("chars/kfm_zaxis", r.Cells[2].CharGroup);
+            Assert.AreEqual("chars/kfm", r.Cells[3].CharGroup);
+            Assert.AreEqual("kfm.def", r.Cells[3].CharDef);
+            Assert.IsTrue(r.Cells[4].Random);
             CollectionAssert.AreEqual(new[] { "kfm.def", "stage0.def", "stage0-720.def", "stage1.def", "stageZ.def", "interactivestage.def" },
                                       r.Stages.ConvertAll(s => s.Def));
         }
@@ -119,8 +123,10 @@ namespace IK.Tests {
 
             var sp = ScreenpackRoster();
             sp.Filter(CharProblem, StageProblem);
-            // kfm720 is order=0 there: never an arcade opponent
-            Assert.AreEqual(0, sp.ArcadeLadder(new System.Random(1)).Count);
+            // kfm720 and kfm_zaxis are order=0 there: only kfm_zss is an arcade opponent
+            var spLadder = sp.ArcadeLadder(new System.Random(1));
+            Assert.AreEqual(6, spLadder.Count);
+            foreach (var c in spLadder) Assert.AreEqual("chars/kfm_zss", c.CharGroup);
         }
 
         // ---- game flow ---------------------------------------------------------------
@@ -151,7 +157,7 @@ namespace IK.Tests {
             Assert.AreEqual(6, f.Ladder.Count);
             var m = f.Current;
             Assert.AreEqual(GameMode.Arcade, m.Mode);
-            Assert.AreEqual("chars/kfm", m.Players[0].CharGroup);
+            Assert.AreEqual("chars/kfm_zss", m.Players[0].CharGroup);
             Assert.AreEqual(2, m.Players[0].Palette);
             Assert.AreEqual(0, m.Players[0].AiLevel);
             Assert.AreEqual(4, m.Players[1].AiLevel);

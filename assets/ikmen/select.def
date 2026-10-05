@@ -9,8 +9,10 @@
 ; Format: MUGEN 1.0 select.def (name, stages..., order=n).
 
 [Characters]
-kfm, stages/kfm.def
+kfm_zss, stages/kfm.def
 kfm720, stages/stage0-720.def
+kfm_zaxis, stages/stageZ.def
+kfm, stages/stage0.def
 randomselect
 
 [ExtraStages]

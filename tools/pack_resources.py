@@ -34,8 +34,18 @@ GROUPS: dict[str, list[str]] = {
         "chars/kfm/kfm.sff",
         "chars/kfm/kfm.snd",
     ],
-    # dev.5 roster (assets/ikmen/select.def). kfm_zss / kfm_zaxis are not shipped: their
-    # states are ZSS scripts, which the C# engine does not interpret.
+    # dev.5 roster (assets/ikmen/select.def): the screenpack's own roster (kfm_zss, kfm720,
+    # kfm_zaxis — ZSS characters run through Core/ZssFile.cs) plus the classic CNS kfm.
+    "chars/kfm_zss": [
+        "chars/kfm_zss/kfm_zss.def", "chars/kfm_zss/kfm.const", "chars/kfm_zss/kfm.zss",
+        "chars/kfm_zss/hits.zss", "chars/kfm_zss/command.zss", "chars/kfm_zss/AI.zss",
+        "chars/kfm_zss/kfm.cmd", "chars/kfm_zss/kfm.air", "chars/kfm_zss/kfm.sff", "chars/kfm_zss/kfm.snd",
+    ],
+    "chars/kfm_zaxis": [
+        "chars/kfm_zaxis/kfm_zaxis.def", "chars/kfm_zaxis/kfm.const", "chars/kfm_zaxis/kfm.zss",
+        "chars/kfm_zaxis/hits.zss", "chars/kfm_zaxis/command.zss", "chars/kfm_zaxis/AI.zss",
+        "chars/kfm_zaxis/kfm.cmd", "chars/kfm_zaxis/kfm.air", "chars/kfm_zaxis/kfm.sff", "chars/kfm_zaxis/kfm.snd",
+    ],
     "chars/kfm720": [
         "chars/kfm720/kfm720.def",
         "chars/kfm720/kfm720.cns",
@@ -97,6 +107,8 @@ GROUPS: dict[str, list[str]] = {
         "data/ikemen1/fonts/PixelFlat.sff",
         "//assets/ikmen/select.def",
         "LICENCE.txt",
+        # Ikemen's own common states (ZSS) for the numbers the native C# ones do not cover
+        "//engine/ikemen-go/data/common1.cns.zss",
     ],
 }
 

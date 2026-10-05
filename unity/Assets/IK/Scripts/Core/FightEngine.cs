@@ -69,10 +69,14 @@ namespace IK.Core {
                 Players[i].PlayerNo = i;
                 Players[i].Engine = this;
                 Players[i].JugglePoints = Players[i].Const.AirJuggle;
+                float stageW = stage != null && stage.LocalCoord != null && stage.LocalCoord[0] > 0 ? stage.LocalCoord[0] : 320f;
+                float charW = Players[i].Character != null && Players[i].Character.LocalCoordWidth > 0 ? Players[i].Character.LocalCoordWidth : 320f;
+                Players[i].Scl = stageW / charW;
                 Chars.Add(Players[i]);
             }
             Stage = stage;
             Fight = fight;
+            if (stage != null && stage.LocalCoord != null && stage.LocalCoord[0] > 0) ScreenWidth = stage.LocalCoord[0];
             if (stage != null) Camera = new StageCamera(stage, ScreenWidth);
             if (fight != null) {
                 if (fight.Time != null && fight.Time.FramesPerCount > 0) FramesPerCount = fight.Time.FramesPerCount;
@@ -110,8 +114,8 @@ namespace IK.Core {
                 if (Stage != null) {
                     var start = i == 0 ? Stage.P1Start : Stage.P2Start;
                     if (start != null) {
-                        f.PosX = start.StartX;
-                        f.PosY = start.StartY;
+                        f.WorldX = start.StartX;
+                        f.WorldY = start.StartY;
                         if (start.Facing != 0) f.Facing = start.Facing;
                     }
                 } else {
@@ -200,7 +204,7 @@ namespace IK.Core {
 
                 // 7. camera
                 if (Camera != null && Players[0] != null && Players[1] != null)
-                    Camera.Update(Players[0].PosX, Players[1].PosX);
+                    Camera.Update(Players[0].WorldX, Players[1].WorldX);
 
                 // 8. the stage's own animations and scrolling state (Go `Stage.action`)
                 if (Stage != null) Stage.Tick();
@@ -288,7 +292,7 @@ namespace IK.Core {
                        : b.Type == StateType.Air ? hd.AirCornerPush : hd.GroundCornerPush;
             if (float.IsNaN(push) || push == 0f) return;
             float left = Stage.BoundLeft, right = Stage.BoundRight;
-            bool cornered = b.PosX <= left + b.Const.GroundBack + 1f || b.PosX >= right - b.Const.GroundFront - 1f;
+            bool cornered = b.WorldX <= left + (b.Const.GroundBack + 1f) * b.Scl || b.WorldX >= right - (b.Const.GroundFront + 1f) * b.Scl;
             if (cornered) a.VelX = -Math.Abs(push) * 0.5f;
         }
 
@@ -302,13 +306,13 @@ namespace IK.Core {
                 var hd = c.Hit;
                 bool threat = c.HitDefActive && hd != null && hd.IsValid && c.Move == MoveType.Attack;
                 if (!threat) continue;
-                float dist = Math.Abs(f.PosX - c.PosX);
-                float guardDist = hd.GuardDistX[0] > 0f ? hd.GuardDistX[0] : c.Const.AttackDist;
+                float dist = Math.Abs(f.WorldX - c.WorldX);
+                float guardDist = (hd.GuardDistX[0] > 0f ? hd.GuardDistX[0] : c.Const.AttackDist) * c.Scl;
                 if (dist <= guardDist) { f.InGuardDist = true; return; }
             }
             foreach (var p in Projectiles) {
                 if (p.State != Projectile.Phase.Flying || p.Owner == null || p.Owner.PlayerNo == f.PlayerNo) continue;
-                if (Math.Abs(f.PosX - p.PosX) <= p.Owner.Const.ProjAttackDist) { f.InGuardDist = true; return; }
+                if (Math.Abs(f.WorldX - p.PosX) <= p.Owner.Const.ProjAttackDist * p.Owner.Scl) { f.InGuardDist = true; return; }
             }
         }
 
@@ -334,11 +338,11 @@ namespace IK.Core {
             bool overlapX = ba[0] < bb[2] && bb[0] < ba[2];
             bool overlapY = ba[1] < bb[3] && bb[1] < ba[3];
             if (!overlapX || !overlapY) return;
-            float overlap = a.PosX <= b.PosX ? ba[2] - bb[0] : bb[2] - ba[0];
+            float overlap = a.WorldX <= b.WorldX ? ba[2] - bb[0] : bb[2] - ba[0];
             if (overlap <= 0f) return;
             float half = overlap / 2f;
-            if (a.PosX <= b.PosX) { a.PosX -= half; b.PosX += half; }
-            else { a.PosX += half; b.PosX -= half; }
+            if (a.WorldX <= b.WorldX) { a.WorldX -= half; b.WorldX += half; }
+            else { a.WorldX += half; b.WorldX -= half; }
         }
 
         /// <summary>Characters stay inside the stage's player bounds and on the screen.</summary>
@@ -352,8 +356,8 @@ namespace IK.Core {
                     min = Math.Max(min, Camera.PlayerXMin);
                     max = Math.Min(max, Camera.PlayerXMax);
                 }
-                if (f.PosX < min) f.PosX = min;
-                if (f.PosX > max) f.PosX = max;
+                if (f.WorldX < min) f.WorldX = min;
+                if (f.WorldX > max) f.WorldX = max;
             }
         }
 
@@ -436,7 +440,7 @@ namespace IK.Core {
             if (!f.Ctrl || f.NoAutoTurn) return;
             if (f.Type == StateType.Air || f.Type == StateType.LieDown) return;
             if (f.Move != MoveType.Idle) return;
-            int want = enemy.PosX >= f.PosX ? 1 : -1;
+            int want = enemy.WorldX >= f.WorldX ? 1 : -1;
             if (want != f.Facing) f.Facing = want;
         }
     }

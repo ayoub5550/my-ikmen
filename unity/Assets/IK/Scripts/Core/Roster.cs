@@ -196,7 +196,7 @@ namespace IK.Core {
         /// Set to true by the engine once ZSS state files run; until then ZSS characters
         /// (kfm_zss, kfm_zaxis) are kept out of the roster.
         /// </summary>
-        public static bool ZssSupported = false;
+        public static bool ZssSupported = true;
 
         /// <summary>
         /// Why a character def cannot run on this engine, or null when it can: no [Files], or

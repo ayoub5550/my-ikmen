@@ -19,6 +19,11 @@ namespace IK.Core {
     /// <summary>A context that supports MUGEN trigger redirection (`root, var(1)`,
     /// `helper(1200), pos x`, `enemynear, statetype = A`). Returns null when the
     /// redirection target does not exist (the trigger then evaluates to 0).</summary>
+    /// <summary>A context whose variables expressions may assign (`var(1) := 2`).</summary>
+    public interface IAssignContext {
+        void Assign(string name, int index, float value);
+    }
+
     public interface IRedirectContext : IExprContext {
         IExprContext Redirect(string kind, int id, bool hasId);
     }
@@ -165,6 +170,28 @@ namespace IK.Core {
             }
         }
 
+        /// <summary>`var(n) := expr` (also fvar, sysvar, sysfvar and ZSS locals): stores the
+        /// value through <see cref="IAssignContext"/> and evaluates to it.</summary>
+        class Assign : Node {
+            public Node Target, Value;
+            public static bool IsTarget(Node n) {
+                if (n is Call c) {
+                    switch (c.Name.ToLowerInvariant()) {
+                        case "var": case "fvar": case "sysvar": case "sysfvar": return true;
+                    }
+                }
+                return n is Trigger t && t.Name.StartsWith("zss__", StringComparison.OrdinalIgnoreCase);
+            }
+            public override float Eval(IExprContext ctx, Expr owner) {
+                float v = Value.Eval(ctx, owner);
+                var ac = ctx as IAssignContext;
+                if (ac == null) return v;
+                if (Target is Call c) ac.Assign(c.Name.ToLowerInvariant(), (int)(c.Args.Count > 0 ? c.Args[0].Eval(ctx, owner) : 0), v);
+                else if (Target is Trigger t) ac.Assign(t.Name.ToLowerInvariant(), 0, v);
+                return v;
+            }
+        }
+
         class Unary : Node {
             public string Op;
             public Node A;
@@ -292,6 +319,8 @@ namespace IK.Core {
                     case "numexplod":
                     case "numhelper":
                     case "numprojid":
+                    case "map":
+                    case "mugenversion":
                     case "teammode": {
                         // `const(movement.yaccel)` parses as a trigger name, `var("x")` as a
                         // string — both are really just the argument's text.
@@ -361,6 +390,10 @@ namespace IK.Core {
 
             Node ParseEquality() {
                 var a = ParseComparison();
+                if (IsOp(":=") && Assign.IsTarget(a)) {
+                    Next();
+                    return new Assign { Target = a, Value = ParseExpression() };
+                }
                 while (IsOp("=") || IsOp("!=") || IsOp(":=")) {
                     string op = Cur.Text == ":=" ? "=" : Cur.Text;
                     Next();
@@ -470,7 +503,7 @@ namespace IK.Core {
 
             static readonly HashSet<string> TwoWordTriggers = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                 "vel", "pos", "p2dist", "p2bodydist", "p1dist", "p1bodydist", "screenpos",
-                "parentdist", "rootdist", "animelem", "projhittime", "projcontacttime",
+                "parentdist", "rootdist", "animelem", "camerapos", "hitvel", "projhittime", "projcontacttime",
                 "projguardedtime", "projhit", "projcontact", "projguarded"
             };
 

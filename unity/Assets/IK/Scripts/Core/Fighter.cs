@@ -105,6 +105,7 @@ namespace IK.Core {
             if (!IsHelper) CommonStates.BasicActions(this);   // the engine's hard-coded keys (char.go)
             ClearSpecialFlags();               // char.go clears specialFlag right after them
             // the special states: -3 (players, own states only), -2 (players), -1 (.cmd)
+            if (!IsHelper) RunState(-4);
             if (!IsHelper && ForeignStates == null) RunState(-3);
             if (!IsHelper) RunState(-2);
             if (!IsHelper || KeyCtrl) RunState(-1);   // the .cmd state: commands into state changes
@@ -123,7 +124,7 @@ namespace IK.Core {
             int guard = 0, before;
             do {
                 before = StateNo;
-                if (ActiveStates != null && ActiveStates.Get(StateNo) != null) RunState(StateNo);
+                if (ResolveState(StateNo) != null) RunState(StateNo);
                 else if (HitStates.IsHandled(StateNo)) HitStates.Apply(this);
                 else CommonStates.Apply(this);  // a common state the character did not override
                 guard++;
@@ -154,9 +155,25 @@ namespace IK.Core {
         /// `p2stateno` sequence (dev.4).</summary>
         public CnsFile ActiveStates => ForeignStates ?? States;
 
-        void RunState(int no) {
+        /// <summary>
+        /// dev.5: Ikemen's own common states (`data/common1.cns.zss`, compiled by
+        /// <see cref="ZssFile"/>) for the common state numbers the native
+        /// <see cref="CommonStates"/> / <see cref="HitStates"/> do not cover
+        /// (110-115 dash, 170-191 lose/draw/intro, 5200-5210 fall recovery, 5500, 5900).
+        /// </summary>
+        public static CnsFile CommonZss;
+
+        StateDef ResolveState(int no) {
             var def = ActiveStates?.Get(no);
+            if (def != null || no < 0 || CommonZss == null) return def;
+            if (HitStates.IsHandled(no) || CommonStates.IsCommon(no)) return null;
+            return CommonZss.Get(no);
+        }
+
+        void RunState(int no) {
+            var def = no < 0 ? ActiveStates?.Get(no) : ResolveState(no);
             if (def == null) return;
+            if (ZssLocals.Count > 0) ZssLocals.Clear();
             if (no >= 0) ApplyStatedefParams(def);
             foreach (var c in def.Controllers) {
                 if (c.Persistent == 0) {
@@ -363,7 +380,7 @@ namespace IK.Core {
             ranThisState.Clear();
             LastTransition = reason;
             ClearHitDef();                       // MUGEN: a HitDef lives until the state changes
-            var def = ActiveStates?.Get(no);
+            var def = ResolveState(no);
             if (def != null) ApplyStatedefParams(def);
             else if (HitStates.IsHandled(no)) HitStates.Enter(this, no);
             else CommonStates.EnterCommon(this, no);
@@ -511,25 +528,25 @@ namespace IK.Core {
                 }
                 case "p2dist x": {
                     var t = Opponent;
-                    value = t != null ? (t.PosX - PosX) * Facing : 160f;
+                    value = t != null ? (t.WorldX - WorldX) * Facing / Scl : 160f;
                     return true;
                 }
                 case "p2dist y": {
                     var t = Opponent;
-                    value = t != null ? t.PosY - PosY : 0f;
+                    value = t != null ? (t.WorldY - WorldY) / Scl : 0f;
                     return true;
                 }
                 case "p2bodydist x": {
                     var t = Opponent;
                     if (t == null) { value = 160f; return true; }
-                    float front = Type == StateType.Air ? Const.AirFront : Const.GroundFront;
-                    float tFront = t.Type == StateType.Air ? t.Const.AirFront : t.Const.GroundFront;
-                    value = (Math.Abs(t.PosX - PosX) - front - tFront) * ((t.PosX - PosX) * Facing >= 0 ? 1 : -1);
+                    float front = (Type == StateType.Air ? Const.AirFront : Const.GroundFront) * Scl;
+                    float tFront = (t.Type == StateType.Air ? t.Const.AirFront : t.Const.GroundFront) * t.Scl;
+                    value = (Math.Abs(t.WorldX - WorldX) - front - tFront) * ((t.WorldX - WorldX) * Facing >= 0 ? 1 : -1) / Scl;
                     return true;
                 }
                 case "p2bodydist y": {
                     var t = Opponent;
-                    value = t != null ? t.PosY - PosY : 0f;
+                    value = t != null ? (t.WorldY - WorldY) / Scl : 0f;
                     return true;
                 }
                 case "p2statetype": {
@@ -555,13 +572,13 @@ namespace IK.Core {
                 case "backedgedist": {
                     float bound = Engine != null && Engine.Stage != null ? Engine.Stage.LeftBound : -200f;
                     float other = Engine != null && Engine.Stage != null ? Engine.Stage.RightBound : 200f;
-                    value = Facing >= 0 ? PosX - bound : other - PosX;
+                    value = (Facing >= 0 ? WorldX - bound : other - WorldX) / Scl;
                     return true;
                 }
                 case "frontedgedist": {
                     float left = Engine != null && Engine.Stage != null ? Engine.Stage.LeftBound : -200f;
                     float right = Engine != null && Engine.Stage != null ? Engine.Stage.RightBound : 200f;
-                    value = Facing >= 0 ? right - PosX : PosX - left;
+                    value = (Facing >= 0 ? right - WorldX : WorldX - left) / Scl;
                     return true;
                 }
                 case "backedgebodydist":
@@ -569,14 +586,14 @@ namespace IK.Core {
                     float left = Engine != null && Engine.Stage != null ? Engine.Stage.LeftBound : -200f;
                     float right = Engine != null && Engine.Stage != null ? Engine.Stage.RightBound : 200f;
                     bool front = name.ToLowerInvariant().StartsWith("front");
-                    float edge = (front == (Facing >= 0)) ? right - PosX : PosX - left;
+                    float edge = ((front == (Facing >= 0)) ? right - WorldX : WorldX - left) / Scl;
                     value = edge - (Type == StateType.Air ? Const.AirFront : Const.GroundFront);
                     return true;
                 }
-                case "screenpos x": value = Engine != null && Engine.Camera != null ? PosX - Engine.Camera.X : PosX; return true;
+                case "screenpos x": value = (Engine != null && Engine.Camera != null ? WorldX - Engine.Camera.X + Engine.ScreenWidth / 2f : WorldX + 160f) / Scl; return true;
                 case "screenpos y": value = PosY; return true;
-                case "cameraPos x": case "camerapos x": value = Engine != null && Engine.Camera != null ? Engine.Camera.X : 0f; return true;
-                case "camerapos y": value = Engine != null && Engine.Camera != null ? Engine.Camera.Y : 0f; return true;
+                case "cameraPos x": case "camerapos x": value = (Engine != null && Engine.Camera != null ? Engine.Camera.X : 0f) / Scl; return true;
+                case "camerapos y": value = (Engine != null && Engine.Camera != null ? Engine.Camera.Y : 0f) / Scl; return true;
                 case "canrecover": value = Ghv.FallRecover ? 1 : 0; return true;
                 case "timemod": value = 0; return true;
                 case "roundstowin": value = Engine != null ? Engine.RoundsToWin : 2; return true;

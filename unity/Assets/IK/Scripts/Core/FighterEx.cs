@@ -9,7 +9,19 @@ namespace IK.Core {
     /// Bind*, Trans, AngleDraw, ...) and the triggers that go with them.
     /// Reference: `engine/ikemen-go/src/char.go` and `bytecode.go` (each controller's `Run`).
     /// </summary>
-    public partial class Fighter : IRedirectContext {
+    public partial class Fighter : IRedirectContext, IAssignContext {
+        public void Assign(string name, int index, float value) {
+            switch (name) {
+                case "var": if (index >= 0 && index < Vars.Length) Vars[index] = (int)value; return;
+                case "fvar": if (index >= 0 && index < FVars.Length) FVars[index] = value; return;
+                case "sysvar":
+                    if (index == 1) SysVar1 = (int)value;
+                    if (index >= 0 && index < SysVars.Length) SysVars[index] = (int)value; return;
+                case "sysfvar": if (index >= 0 && index < SysFVars.Length) SysFVars[index] = value; return;
+            }
+            if (name.StartsWith("zss__", StringComparison.Ordinal)) ZssLocals[name.Substring(5)] = value;
+        }
+
         // ---- helpers ---------------------------------------------------------------
         public bool IsHelper;
         public int HelperId;
@@ -61,6 +73,10 @@ namespace IK.Core {
         public readonly Dictionary<int, int> ProjHitAt = new Dictionary<int, int>(), ProjContactAt = new Dictionary<int, int>(),
             ProjGuardedAt = new Dictionary<int, int>();
         public string VictoryQuote = "";
+        /// <summary>ZSS `let` locals of the state being run (reset for every state run).</summary>
+        public readonly Dictionary<string, float> ZssLocals = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Ikemen maps (`map(name)`, MapSet, MapAdd).</summary>
+        public readonly Dictionary<string, float> Maps = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Creates a helper of <paramref name="parent"/> (Helper controller).</summary>
         public Fighter(Fighter parent, int helperId, int stateNo) {
@@ -76,6 +92,7 @@ namespace IK.Core {
             rootChar = parent.Root;
             PlayerNo = parent.PlayerNo;
             Engine = parent.Engine;
+            Scl = parent.Root.Scl;
             Life = Const.Life;
             Power = parent.Root.Power;
             PaletteNo = parent.PaletteNo;
@@ -86,6 +103,17 @@ namespace IK.Core {
         }
 
         public int SuperMoveLeft, PauseMoveLeft;
+
+        /// <summary>
+        /// dev.5: world units per character unit. A character keeps its position, velocity and
+        /// constants in its own `localcoord` units (all of its states are written in them); the
+        /// engine works in the stage's units. Scl = stage localcoord width / character
+        /// localcoord width: 1 for KFM on a 320-wide stage, 0.25 for kfm720 (1280x720) there.
+        /// Ikemen GO: `localscl` in char.go.
+        /// </summary>
+        public float Scl = 1f;
+        public float WorldX { get { return PosX * Scl; } set { PosX = value / Scl; } }
+        public float WorldY { get { return PosY * Scl; } set { PosY = value / Scl; } }
 
         void InitEx() {
             for (int i = 0; i < HitOverrides.Length; i++) if (HitOverrides[i] == null) HitOverrides[i] = new HitOverrideSlot();
@@ -227,6 +255,22 @@ namespace IK.Core {
         bool ApplyEx(StateController c) {
             InitEx();
             switch (c.Type) {
+                case ZssFile.LetType:
+                    ZssLocals[c.Get("name")] = EvalFloat(c.Get("value"));
+                    return true;
+                case ZssFile.ExprType:
+                    EvalFloat(c.Get("value"));
+                    return true;
+                case "mapset":
+                case "mapadd": {
+                    string key = MugenDef.Unquote(c.Get("map")).Trim().ToLowerInvariant();
+                    float v = ParamFloat(c, "value", 0f);
+                    var target = ParamInt(c, "type", 0) == 1 ? Root : this;
+                    float old;
+                    target.Maps.TryGetValue(key, out old);
+                    target.Maps[key] = c.Type == "mapadd" ? old + v : v;
+                    return true;
+                }
                 case "helper": SpawnHelper(c); return true;
                 case "destroyself":
                     if (IsHelper) Destroyed = true;
@@ -367,8 +411,8 @@ namespace IK.Core {
                     var to = c.Type == "bindtoparent" ? Parent : (IsHelper ? Root : null);
                     if (to == null) return true;
                     var pos = EvalPair(c, "pos", 0, 0);
-                    PosX = to.PosX + pos[0] * to.Facing;
-                    PosY = to.PosY + pos[1];
+                    WorldX = to.WorldX + pos[0] * Scl * to.Facing;
+                    WorldY = to.WorldY + pos[1] * Scl;
                     if (c.Has("facing")) {
                         int f = EvalInt(c.Get("facing"));
                         if (f > 0) Facing = to.Facing; else if (f < 0) Facing = -to.Facing;
@@ -381,11 +425,11 @@ namespace IK.Core {
                         string anchor = "foot";
                         var parts = MugenDef.SplitCsv(c.Get("pos"));
                         if (parts.Length > 2) anchor = parts[2].Trim().ToLowerInvariant();
-                        float y = t.PosY + pos[1];
-                        if (anchor == "head") y -= t.Const.Height;
-                        else if (anchor == "mid") y -= t.Const.Height / 2f;
-                        PosX = t.PosX + pos[0] * t.Facing;
-                        PosY = y;
+                        float y = t.WorldY + pos[1] * Scl;
+                        if (anchor == "head") y -= t.Const.Height * t.Scl;
+                        else if (anchor == "mid") y -= t.Const.Height * t.Scl / 2f;
+                        WorldX = t.WorldX + pos[0] * Scl * t.Facing;
+                        WorldY = y;
                         break;
                     }
                     return true;
@@ -427,11 +471,11 @@ namespace IK.Core {
                 case "targetbind":
                     foreach (var t in TargetsById(c)) {
                         var pos = EvalPair(c, "pos", 0, 0);
-                        t.PosX = PosX + pos[0] * Facing;
-                        t.PosY = PosY + pos[1];
+                        t.WorldX = WorldX + pos[0] * Scl * Facing;
+                        t.WorldY = WorldY + pos[1] * Scl;
                         t.Ghv.IsBound = true;
                         t.BindTimeLeft = Math.Max(1, ParamInt(c, "time", 1));
-                        t.BoundTo = this; t.BindOffX = pos[0]; t.BindOffY = pos[1];
+                        t.BoundTo = this; t.BindOffX = pos[0] * Scl; t.BindOffY = pos[1] * Scl;
                     }
                     return true;
                 case "targetdrop": {
@@ -452,7 +496,7 @@ namespace IK.Core {
                     bool under = ParamInt(c, "under", 0) != 0;
                     var pos = EvalPair(c, "pos", 0, 0);
                     e.AnimNo = no; e.OffX = pos[0]; e.OffY = pos[1]; e.UnderStage = under;
-                    e.PosX = PosX + pos[0] * Facing; e.PosY = PosY + pos[1]; e.Facing = Facing;
+                    e.PosX = WorldX + pos[0] * Facing * Scl; e.PosY = WorldY + pos[1] * Scl; e.Facing = Facing;
                     Engine?.AddExplod(e);
                     return true;
                 }
@@ -491,10 +535,10 @@ namespace IK.Core {
                     return true;
                 }
                 case "lifebaraction": case "powerbar": case "redlifeadd": case "redlifeset": case "dizzypointsadd":
-                case "guardpointsadd": case "scoreadd": case "matchrestart": case "mapset": case "mapadd":
+                case "guardpointsadd": case "scoreadd": case "matchrestart":
                 case "assertinput": case "text": case "rankadd": case "modifysnd": case "modifybgctrl":
                 case "modifystagevar": case "playbgm": case "groundleveloffset": case "printtoconsole":
-                case "depth": case "shiftinput": case "transformclsn": case "modifyplayer":
+                case "depth": case "shiftinput": case "transformclsn": case "modifyplayer": case "dialogue": case "loadfile": case "savefile":
                     return true;   // Ikemen-only controllers: accepted so a character does not break
             }
             return false;
@@ -588,14 +632,23 @@ namespace IK.Core {
         }
 
         /// <summary>The `postype` rule shared by Helper, Explod and Projectile.</summary>
+        /// <summary>Like <see cref="PlaceRelativeWorld"/> but in this character's own units (helpers).</summary>
         void PlaceRelative(string postype, float x, float y, int facingParam, out float px, out float py, out int facing) {
+            PlaceRelativeWorld(postype, x, y, facingParam, out px, out py, out facing);
+            px /= Scl; py /= Scl;
+        }
+
+        /// <summary>The `postype` rule shared by Helper, Explod and Projectile, in world units.
+        /// <paramref name="x"/>/<paramref name="y"/> are in this character's units.</summary>
+        void PlaceRelativeWorld(string postype, float x, float y, int facingParam, out float px, out float py, out int facing) {
+            x *= Scl; y *= Scl;
             var enemy = Engine != null ? Engine.Opponent(Root) : null;
             float camL = Engine != null && Engine.Camera != null ? Engine.Camera.X - Engine.ScreenWidth / 2f : -160f;
             float camR = camL + (Engine != null ? Engine.ScreenWidth : 320f);
             switch (postype) {
                 case "p2":
                     if (enemy != null) {
-                        px = enemy.PosX + x * enemy.Facing; py = enemy.PosY + y;
+                        px = enemy.WorldX + x * enemy.Facing; py = enemy.WorldY + y;
                         facing = facingParam >= 0 ? enemy.Facing : -enemy.Facing;
                         return;
                     }
@@ -615,7 +668,7 @@ namespace IK.Core {
                     px = camR + x; py = y; facing = facingParam >= 0 ? 1 : -1;
                     return;
                 default:
-                    px = PosX + x * Facing; py = PosY + y;
+                    px = WorldX + x * Facing; py = WorldY + y;
                     facing = facingParam >= 0 ? Facing : -Facing;
                     return;
             }
@@ -638,14 +691,16 @@ namespace IK.Core {
             e.OffX = pos[0]; e.OffY = pos[1];
             int facingParam = ParamInt(c, "facing", 1);
             e.VFacing = ParamInt(c, "vfacing", 1) < 0 ? -1 : 1;
-            PlaceRelative(e.PosType, pos[0], pos[1], facingParam, out e.PosX, out e.PosY, out e.Facing);
+            PlaceRelativeWorld(e.PosType, pos[0], pos[1], facingParam, out e.PosX, out e.PosY, out e.Facing);
+            e.OffX = pos[0] * Scl; e.OffY = pos[1] * Scl;
+            e.ScaleX *= 1f; 
             e.ScreenSpace = e.PosType == "left" || e.PosType == "right" || e.PosType == "front" || e.PosType == "back" || e.PosType == "none";
             if (e.ScreenSpace && Engine != null && Engine.Camera != null) e.PosX -= Engine.Camera.X;
             e.BindTarget = e.PosType == "p2" ? (Engine != null ? Engine.Opponent(Root) : null) : this;
             var vel = EvalPair(c, c.Has("vel") ? "vel" : "velocity", 0, 0);
-            e.VelX = vel[0] * e.Facing; e.VelY = vel[1];
+            e.VelX = vel[0] * e.Facing * Scl; e.VelY = vel[1] * Scl;
             var acc = EvalPair(c, "accel", 0, 0);
-            e.AccelX = acc[0] * e.Facing; e.AccelY = acc[1];
+            e.AccelX = acc[0] * e.Facing * Scl; e.AccelY = acc[1] * Scl;
             e.BindTime = ParamInt(c, "bindtime", 0);
             e.RemoveTime = ParamInt(c, "removetime", -2);
             e.SprPriority = ParamInt(c, "sprpriority", 0);
@@ -675,12 +730,12 @@ namespace IK.Core {
             foreach (var e in Engine.Explods) {
                 if (e.Owner != this || (id >= 0 && e.Id != id)) continue;
                 if (c.Has("pos")) {
-                    var pos = EvalPair(c, "pos", e.OffX, e.OffY);
-                    e.OffX = pos[0]; e.OffY = pos[1];
-                    if (e.BindTime == 0 && e.BindTarget != null) { e.PosX = e.BindTarget.PosX + pos[0] * e.Facing; e.PosY = e.BindTarget.PosY + pos[1]; }
+                    var pos = EvalPair(c, "pos", e.OffX / Scl, e.OffY / Scl);
+                    e.OffX = pos[0] * Scl; e.OffY = pos[1] * Scl;
+                    if (e.BindTime == 0 && e.BindTarget != null) { e.PosX = e.BindTarget.WorldX + e.OffX * e.Facing; e.PosY = e.BindTarget.WorldY + e.OffY; }
                 }
-                if (c.Has("vel") || c.Has("velocity")) { var v = EvalPair(c, c.Has("vel") ? "vel" : "velocity", 0, 0); e.VelX = v[0] * e.Facing; e.VelY = v[1]; }
-                if (c.Has("accel")) { var a = EvalPair(c, "accel", 0, 0); e.AccelX = a[0] * e.Facing; e.AccelY = a[1]; }
+                if (c.Has("vel") || c.Has("velocity")) { var v = EvalPair(c, c.Has("vel") ? "vel" : "velocity", 0, 0); e.VelX = v[0] * e.Facing * Scl; e.VelY = v[1] * Scl; }
+                if (c.Has("accel")) { var a = EvalPair(c, "accel", 0, 0); e.AccelX = a[0] * e.Facing * Scl; e.AccelY = a[1] * Scl; }
                 if (c.Has("bindtime")) e.BindTime = EvalInt(c.Get("bindtime"));
                 if (c.Has("removetime")) { e.RemoveTime = EvalInt(c.Get("removetime")); e.Time = 0; }
                 if (c.Has("sprpriority")) e.SprPriority = EvalInt(c.Get("sprpriority"));
@@ -713,25 +768,25 @@ namespace IK.Core {
             else { p.CancelSource = p.RemSource; p.CancelAnim = p.RemAnim; }
             var off = EvalPair(c, "offset", 0, 0);
             string postype = c.Get("postype", "p1").Trim().ToLowerInvariant();
-            PlaceRelative(postype, off[0], off[1], 1, out p.PosX, out p.PosY, out p.Facing);
+            PlaceRelativeWorld(postype, off[0], off[1], 1, out p.PosX, out p.PosY, out p.Facing);
             var vel = EvalPair(c, "velocity", 0, 0);
-            p.VelX = vel[0]; p.VelY = vel[1];
+            p.VelX = vel[0] * Scl; p.VelY = vel[1] * Scl;
             var acc = EvalPair(c, "accel", 0, 0);
-            p.AccelX = acc[0]; p.AccelY = acc[1];
+            p.AccelX = acc[0] * Scl; p.AccelY = acc[1] * Scl;
             var vm = EvalPair(c, "velmul", 1, 1);
             p.VelMulX = vm[0]; p.VelMulY = vm[1];
             var rv = EvalPair(c, "projremvelocity", 0, 0);
-            p.RemVelX = rv[0]; p.RemVelY = rv[1];
+            p.RemVelX = rv[0] * Scl; p.RemVelY = rv[1] * Scl;
             var sc = EvalPair(c, "projscale", 1, 1);
-            p.ScaleX = sc[0]; p.ScaleY = sc[1];
+            p.ScaleX = sc[0] * Scl; p.ScaleY = sc[1] * Scl;
             p.HitsLeft = ParamInt(c, "projhits", 1);
             p.MissTime = ParamInt(c, "projmisstime", 0);
             p.Priority = ParamInt(c, "projpriority", 1);
             p.SprPriority = ParamInt(c, "projsprpriority", 3);
-            p.EdgeBound = ParamFloat(c, "projedgebound", 40f);
-            p.StageBound = ParamFloat(c, "projstagebound", 40f);
+            p.EdgeBound = ParamFloat(c, "projedgebound", 40f) * Scl;
+            p.StageBound = ParamFloat(c, "projstagebound", 40f) * Scl;
             var hb = EvalPair(c, "projheightbound", -240, 1);
-            p.HeightLow = hb[0]; p.HeightHigh = hb[1];
+            p.HeightLow = hb[0] * Scl; p.HeightHigh = hb[1] * Scl;
             p.RemoveTime = ParamInt(c, "projremovetime", -1);
             p.RemoveOnHit = ParamInt(c, "projremove", 1) != 0;
             p.PauseMoveTime = ParamInt(c, "pausemovetime", 0);
@@ -763,7 +818,7 @@ namespace IK.Core {
                         var pos = EvalPair(c, "pos", 0, 0);
                         var e = new Explod {
                             Owner = this, Source = src, AnimNo = no, IsSystem = true, OnTop = true,
-                            PosX = PosX + pos[0] * Facing, PosY = PosY + pos[1], Facing = Facing,
+                            PosX = WorldX + pos[0] * Facing * Scl, PosY = WorldY + pos[1] * Scl, Facing = Facing,
                             SuperMoveTime = 9999, PauseMoveTime = 9999, SprPriority = 5,
                         };
                         Engine.AddExplod(e);
@@ -787,6 +842,10 @@ namespace IK.Core {
         bool TryTriggerEx(string name, string arg, float argValue, out float value) {
             value = 0f;
             var e = Engine;
+            if (name.StartsWith("zss__", StringComparison.Ordinal)) {
+                ZssLocals.TryGetValue(name.Substring(5), out value);
+                return true;
+            }
             switch (name) {
                 case "ishelper": value = IsHelper && (argValue <= 0 || HelperId == (int)argValue) ? 1 : 0; return true;
                 case "numhelper": value = e != null ? e.CountHelpers(Root, argValue <= 0 ? -1 : (int)argValue) : 0; return true;
@@ -802,8 +861,8 @@ namespace IK.Core {
                 case "numpartner": value = 0; return true;
                 case "id": value = Id; return true;
                 case "playeridexist": value = e != null && e.FindById((int)argValue) != null ? 1 : 0; return true;
-                case "parentdist x": value = Parent != null ? (Parent.PosX - PosX) * Facing : 0; return true;
-                case "parentdist y": value = Parent != null ? Parent.PosY - PosY : 0; return true;
+                case "parentdist x": value = Parent != null ? (Parent.WorldX - WorldX) * Facing / Scl : 0; return true;
+                case "parentdist y": value = Parent != null ? (Parent.WorldY - WorldY) / Scl : 0; return true;
                 case "rootdist x": value = (Root.PosX - PosX) * Facing; return true;
                 case "rootdist y": value = Root.PosY - PosY; return true;
                 case "teamside": value = PlayerNo + 1; return true;
@@ -818,6 +877,24 @@ namespace IK.Core {
                 case "authorname": value = StrEq(arg, Character != null ? Character.Author : ""); return true;
                 case "palno": value = PaletteNo; return true;
                 case "ailevel": value = Root.AiLevel; return true;
+                case "ailevelf": value = Root.AiLevel; return true;
+                case "standby": value = 0; return true;
+                case "pos z": case "vel z": case "p2dist z": case "p2bodydist z": case "screenpos z": case "camerapos z": value = 0; return true;
+                case "mugenversion": {
+                    string mv = Character != null ? Character.MugenVersion ?? "" : "";
+                    float major = mv.StartsWith("1") ? 1 : mv.Length == 0 ? 1 : 0;
+                    value = arg != null && arg.Trim().ToLowerInvariant() == "minor" ? (mv.StartsWith("1.1") ? 1 : 0) : major;
+                    return true;
+                }
+                case "const240p": value = argValue * (Character != null ? Character.LocalCoordHeight / 240f : 1f); return true;
+                case "const480p": value = argValue * (Character != null ? Character.LocalCoordHeight / 480f : 0.5f); return true;
+                case "const720p": value = argValue * (Character != null ? Character.LocalCoordHeight / 720f : 1f / 3f); return true;
+                case "const1080p": value = argValue * (Character != null ? Character.LocalCoordHeight / 1080f : 0.25f); return true;
+                case "map": {
+                    float v;
+                    value = arg != null && Maps.TryGetValue(arg.Trim().ToLowerInvariant(), out v) ? v : 0f;
+                    return true;
+                }
                 case "ishometeam": value = PlayerNo == 0 ? 1 : 0; return true;
                 case "matchno": value = e != null ? e.MatchNo : 1; return true;
                 case "drawgame": value = e != null && e.MatchOver && e.Wins[0] == e.Wins[1] ? 1 : 0; return true;
@@ -828,15 +905,15 @@ namespace IK.Core {
                 case "losetime": value = e != null && e.RoundWinner == 2 - PlayerNo && !e.LastRoundKO ? 1 : 0; return true;
                 case "hitvel x": value = Ghv.XVel; return true;
                 case "hitvel y": value = Ghv.YVel; return true;
-                case "gameheight": case "screenheight": value = 240f; return true;
-                case "gamewidth": case "screenwidth": value = e != null ? e.ScreenWidth : 320f; return true;
+                case "gameheight": case "screenheight": value = (e != null ? e.ScreenWidth * 0.75f : 240f) / Scl; return true;
+                case "gamewidth": case "screenwidth": value = (e != null ? e.ScreenWidth : 320f) / Scl; return true;
                 case "tickspersecond": value = 60; return true;
-                case "sysvar": { int i = (int)argValue; value = i >= 0 && i < SysVars.Length ? SysVars[i] : 0; return true; }
+                case "sysvar": { int i = (int)argValue; value = i == 1 ? SysVar1 : i >= 0 && i < SysVars.Length ? SysVars[i] : 0; return true; }
+                case "jugglepoints": value = Root.JugglePoints; return true;
                 case "sysfvar": { int i = (int)argValue; value = i >= 0 && i < SysFVars.Length ? SysFVars[i] : 0; return true; }
                 case "pausetime": value = e != null ? e.PauseTimeFor(this) : 0; return true;
                 case "majorversion": value = 1; return true;
                 case "ikemenversion": value = 0; return true;
-                case "mugenversion": value = 1; return true;
                 case "receiveddamage": value = Ghv.Damage; return true;
                 case "receivedhits": value = Ghv.HitCount; return true;
                 case "camerazoom": value = 1; return true;

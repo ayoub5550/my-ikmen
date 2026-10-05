@@ -116,7 +116,8 @@ namespace IK.Core {
                 float l, r;
                 if (Facing >= 0) { l = PosX + b[0]; r = PosX + b[2]; }
                 else { l = PosX - b[2]; r = PosX - b[0]; }
-                result.Add(new[] { l, PosY + b[1], r, PosY + b[3] });
+                // world units (dev.5: a character's boxes are in its own localcoord)
+                result.Add(new[] { l * Scl, (PosY + b[1]) * Scl, r * Scl, (PosY + b[3]) * Scl });
             }
             return result;
         }
@@ -139,7 +140,7 @@ namespace IK.Core {
             float back = Type == StateType.Air ? Const.AirBack : Const.GroundBack;
             float l = Facing >= 0 ? PosX - back : PosX - front;
             float r = Facing >= 0 ? PosX + front : PosX + back;
-            return new[] { l, PosY - Const.Height, r, PosY };
+            return new[] { l * Scl, (PosY - Const.Height) * Scl, r * Scl, PosY * Scl };
         }
 
         // ---- taking a hit --------------------------------------------------------
@@ -199,6 +200,12 @@ namespace IK.Core {
                 Ghv.HitCount++;
             }
             Ghv.JugglePoints = hd.AirJuggle;
+            if (attacker != null && attacker.Scl != Scl) {
+                float k = attacker.Scl / Scl;       // attacker units → my units
+                Ghv.XVel *= k; Ghv.YVel *= k; Ghv.XAccel *= k; Ghv.YAccel *= k;
+                if (!float.IsNaN(Ghv.FallXVel)) Ghv.FallXVel *= k;
+                Ghv.FallYVel *= k;
+            }
 
             // damage
             int raw = guarded ? hd.GuardDamage : hd.HitDamage;
@@ -214,7 +221,7 @@ namespace IK.Core {
 
             // facing: the receiver turns to the attacker unless the HitDef says otherwise
             if (hd.P2Facing != 0 && attacker != null) Facing = hd.P2Facing > 0 ? attacker.Facing : -attacker.Facing;
-            else if (attacker != null && !NoAutoTurn) Facing = attacker.PosX > PosX ? 1 : -1;
+            else if (attacker != null && !NoAutoTurn) Facing = attacker.WorldX > WorldX ? 1 : -1;
 
             if (hd.P2SprPriority != 0) SprPriority = hd.P2SprPriority;
             if (hd.ForceStand == 1 && Type == StateType.Crouching) Type = StateType.Standing;
@@ -268,8 +275,8 @@ namespace IK.Core {
             if (target != null) {
                 // MUGEN: x from p2's front edge (negative = deeper into p2), y from p1's axis
                 float front = target.Type == StateType.Air ? target.Const.AirFront : target.Const.GroundFront;
-                LastSparkX = target.PosX - Facing * front + Facing * hd.SparkXY[0];
-                LastSparkY = PosY + hd.SparkXY[1];
+                LastSparkX = target.WorldX - Facing * front * target.Scl + Facing * hd.SparkXY[0] * Scl;
+                LastSparkY = WorldY + hd.SparkXY[1] * Scl;
                 if (Engine != null && LastSparkNo >= 0)
                     Engine.AddSpark(this, LastSparkNo, guarded ? hd.GuardSparkFromChar : hd.SparkFromChar, LastSparkX, LastSparkY, Facing);
                 if (Engine != null && !guarded && hd.EnvShakeTime > 0)
