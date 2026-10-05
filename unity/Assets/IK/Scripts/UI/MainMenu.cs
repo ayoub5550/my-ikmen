@@ -37,8 +37,8 @@ namespace IK.UI {
 
             UIKit.Text(Root, "footer", new Vector2(0.5f, 0f), new Vector2(0, 42), new Vector2(1100, 36),
                        Loc.Arabic
-                         ? "محرّك Ikemen GO (MIT) · موارد screenpack برخصة CC BY 3.0"
-                         : "Ikemen GO engine (MIT) · screenpack art CC BY 3.0",
+                         ? "Fist Forge · محرّك Ikemen GO (MIT) · موارد screenpack برخصة CC BY 3.0"
+                         : "Fist Forge · Ikemen GO engine (MIT) · screenpack art CC BY 3.0",
                        20, TextAnchor.MiddleCenter);
         }
 
