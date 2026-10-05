@@ -22,7 +22,7 @@ namespace IK.Core {
     /// </summary>
     public partial class Fighter : IExprContext {
         public readonly MugenCharacter Character;
-        public readonly CharConstants Const;
+        public CharConstants Const;
         public readonly CnsFile States;
         public readonly CmdFile Cmd;
         public readonly CommandEngine Commands;
@@ -72,6 +72,7 @@ namespace IK.Core {
             Commands = new CommandEngine(cmd);
             randomSource = random ?? DefaultRandom;
             Life = Const.Life;
+            InitEx();
             ChangeState(0, "spawn");
             if (AnimNo < 0) ChangeAnim(0);      // state 0 picks its animation on its first tick
         }
@@ -99,9 +100,14 @@ namespace IK.Core {
             Time++;
             StateTime++;
 
-            CommonStates.BasicActions(this);   // the engine's hard-coded keys (char.go)
+            TickEx();
+            After.Record(this);
+            if (!IsHelper) CommonStates.BasicActions(this);   // the engine's hard-coded keys (char.go)
             ClearSpecialFlags();               // char.go clears specialFlag right after them
-            RunState(-1);                      // the .cmd state: commands into state changes
+            // the special states: -3 (players, own states only), -2 (players), -1 (.cmd)
+            if (!IsHelper && ForeignStates == null) RunState(-3);
+            if (!IsHelper) RunState(-2);
+            if (!IsHelper || KeyCtrl) RunState(-1);   // the .cmd state: commands into state changes
 
             RunCurrentState();
             int stateBeforePhysics = StateNo;
@@ -151,7 +157,7 @@ namespace IK.Core {
         void RunState(int no) {
             var def = ActiveStates?.Get(no);
             if (def == null) return;
-            if (no != -1) ApplyStatedefParams(def);
+            if (no >= 0) ApplyStatedefParams(def);
             foreach (var c in def.Controllers) {
                 if (c.Persistent == 0) {
                     ranThisState.TryGetValue(c, out var ran);
@@ -282,9 +288,6 @@ namespace IK.Core {
                 case "poweradd":
                     Power = Math.Max(0, Power + EvalInt(c.Get("value")));
                     break;
-                case "playsnd":
-                    LastSound = c.Get("value");
-                    break;
                 case "hitdef":
                     LastHitDef = c.Get("attr", "") + " dmg=" + c.Get("damage", "0");
                     HitDefCount++;
@@ -338,120 +341,11 @@ namespace IK.Core {
                     if (!c.Has("x") || EvalInt(c.Get("x")) != 0) VelX = Ghv.XVel;
                     if (c.Has("y") && EvalInt(c.Get("y")) != 0) VelY = Ghv.YVel;
                     break;
-                case "nothitby":
-                case "hitby":
-                    UnhittableTime = Math.Max(UnhittableTime, c.Has("time") ? EvalInt(c.Get("time")) : 1);
-                    break;
-                case "targetlifeadd": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit) {
-                        int add = EvalInt(c.Get("value"));
-                        bool canKill = !c.Has("kill") || EvalInt(c.Get("kill")) != 0;
-                        t.Life = Math.Max(canKill ? 0 : 1, Math.Min(t.Const.Life, t.Life + add));
-                        if (t.Life <= 0 && !t.NoKO) t.KO = true;
-                    }
-                    break;
-                }
-                case "targetpoweradd": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit)
-                        t.Power = Math.Max(0, Math.Min(t.PowerMax, t.Power + EvalInt(c.Get("value"))));
-                    break;
-                }
-                case "targetstate": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit) {
-                        t.ForeignStates = States;
-                        t.ChangeState(EvalInt(c.Get("value")), "targetstate from player " + Id);
-                    }
-                    break;
-                }
-                case "targetfacing": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit)
-                        t.Facing = EvalInt(c.Get("value")) >= 0 ? Facing : -Facing;
-                    break;
-                }
-                case "targetveladd": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit) {
-                        if (c.Has("x")) t.VelX += EvalFloat(c.Get("x"));
-                        if (c.Has("y")) t.VelY += EvalFloat(c.Get("y"));
-                    }
-                    break;
-                }
-                case "targetvelset": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit) {
-                        if (c.Has("x")) t.VelX = EvalFloat(c.Get("x"));
-                        if (c.Has("y")) t.VelY = EvalFloat(c.Get("y"));
-                    }
-                    break;
-                }
-                case "targetbind": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null && t.Move == MoveType.BeingHit) {
-                        var pos = MugenDef.SplitCsv(c.Get("pos", "0,0"));
-                        float bx = pos.Length > 0 && pos[0].Length > 0 ? EvalFloat(pos[0]) : 0f;
-                        float by = pos.Length > 1 && pos[1].Length > 0 ? EvalFloat(pos[1]) : 0f;
-                        t.PosX = PosX + bx * Facing;
-                        t.PosY = PosY + by;
-                        t.Ghv.IsBound = true;
-                    }
-                    break;
-                }
-                case "targetdrop": {
-                    var t = Engine != null ? Engine.Opponent(this) : null;
-                    if (t != null) t.Ghv.IsBound = false;
-                    break;
-                }
-                case "pause":
-                case "superpause":
-                    HitPauseTime = Math.Max(HitPauseTime, c.Has("time") ? EvalInt(c.Get("time")) : 30);
-                    break;
-                case "null":
-                case "sprpriority":
-                case "playerpush":
-                case "width":
-                case "screenbound":
-                case "makedust":
-                case "afterimage":
-                case "afterimagetime":
-                case "envshake":
-                case "palfx":
-                case "allpalfx":
-                case "bgpalfx":
-                case "explod":
-                case "removeexplod":
-                case "modifyexplod":
-                case "helper":
-                case "destroyself":
-                case "selfanimexist":
-                // accepted but inert until dev.4 brings the opponent and the hit system
-                case "posfreeze":
-                case "hitoverride":
-                case "reversaldef":
-                case "hitadd":
-                case "bindtotarget":
-                case "bindtoparent":
-                case "bindtoroot":
-                case "stopsnd":
-                case "sndpan":
-                case "projectile":
-                case "angledraw":
-                case "angleset":
-                case "angleadd":
-                case "anglemul":
-                case "trans":
-                case "displaytoclipboard":
-                case "appendtoclipboard":
-                case "clearclipboard":
-                case "remappal":
                 case "gravity":
-                    if (c.Type == "gravity") VelY += Const.YAccel;
-                    break;                  // deliberately inert in dev.3
+                    VelY += Const.YAccel;
+                    break;
                 default:
-                    UnknownControllers.Add(c.Type);
+                    if (!ApplyEx(c)) UnknownControllers.Add(c.Type);
                     break;
             }
         }
@@ -496,8 +390,14 @@ namespace IK.Core {
         /// going down enters state 52 (except from the backwards hop, state 105).
         /// </summary>
         void ApplyPhysics() {
-            PosX += VelX * Facing;
-            PosY += VelY;
+            if (BindTimeLeft > 0 && BoundTo != null) {
+                BindTimeLeft--;
+                PosX = BoundTo.PosX + BindOffX * BoundTo.Facing;
+                PosY = BoundTo.PosY + BindOffY;
+            } else if (!PosFreezeOn) {
+                PosX += VelX * Facing;
+                PosY += VelY;
+            }
 
             switch (Phys) {
                 case Physics.Stand:
@@ -528,7 +428,7 @@ namespace IK.Core {
         public bool TryTrigger(string name, string arg, float argValue, out float value) {
             value = 0f;
             switch (name.ToLowerInvariant()) {
-                case "command": value = arg != null && Commands.Active(arg) ? 1 : 0; return true;
+                case "command": value = arg != null && ActiveCommands.Active(arg) ? 1 : 0; return true;
                 case "stateno": value = StateNo; return true;
                 case "prevstateno": value = PrevStateNo; return true;
                 case "time":
@@ -573,16 +473,6 @@ namespace IK.Core {
                 case "matchover": value = Engine != null && Engine.MatchOver ? 1 : 0; return true;
                 case "win": value = Engine != null && Engine.Wins[PlayerNo] > 0 ? 1 : 0; return true;
                 case "lose": value = Engine != null && Engine.Wins[1 - PlayerNo] > 0 ? 1 : 0; return true;
-                case "ishelper": value = 0; return true;
-                case "numhelper":
-                case "numexplod":
-                case "numproj": value = 0; return true;
-                case "numenemy": value = Opponent != null ? 1 : 0; return true;
-                case "numtarget": {
-                    var t = Opponent;
-                    value = t != null && t.Move == MoveType.BeingHit ? 1 : 0;
-                    return true;
-                }
                 case "movecontact": value = MoveContactFlag; return true;
                 case "movehit": value = MoveHitFlag; return true;
                 case "moveguarded": value = MoveGuardedFlag; return true;
@@ -662,8 +552,6 @@ namespace IK.Core {
                     value = t != null ? t.Life : 0f;
                     return true;
                 }
-                case "p2name": value = 0f; return true;
-                case "enemynear": case "enemy": case "p2": value = 1f; return true;
                 case "backedgedist": {
                     float bound = Engine != null && Engine.Stage != null ? Engine.Stage.LeftBound : -200f;
                     float other = Engine != null && Engine.Stage != null ? Engine.Stage.RightBound : 200f;
@@ -702,6 +590,7 @@ namespace IK.Core {
                     value = 0;
                     return true;
             }
+            if (TryTriggerEx(name.ToLowerInvariant(), arg, argValue, out value)) return true;
             UnknownTriggers.Add(name);
             return false;
         }
@@ -727,8 +616,15 @@ namespace IK.Core {
                 case "movement.crouch.friction": return Const.CrouchFriction;
                 case "movement.airjump.num": return Const.AirJumpNum;
                 case "movement.airjump.height": return Const.AirJumpHeight;
+                case "size.air.back": return Const.AirBack;
+                case "size.air.front": return Const.AirFront;
+                case "size.attack.dist": return Const.AttackDist;
+                case "size.proj.attack.dist": return Const.ProjAttackDist;
+                case "data.airjuggle": return Const.AirJuggle;
+                case "data.liedown.time": return Const.LieDownTime;
+                case "data.power": return PowerMax;
             }
-            return 0f;
+            return ConstFromHeader(key);
         }
 
         static float MatchFlag(string arg, char actual) {

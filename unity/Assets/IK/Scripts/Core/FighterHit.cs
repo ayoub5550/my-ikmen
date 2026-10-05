@@ -16,7 +16,10 @@ namespace IK.Core {
         public FightEngine Engine;
         /// <summary>0 for P1, 1 for P2.</summary>
         public int PlayerNo;
-        public int Id => PlayerNo + 1;
+        /// <summary>Player id (`id` trigger, `playerid` redirection). Players get 1 and 2 (as in
+        /// dev.4); helpers get unique ids from the engine.</summary>
+        public int Id { get { return assignedId != 0 ? assignedId : PlayerNo + 1; } set { assignedId = value; } }
+        int assignedId;
 
         /// <summary>The HitDef the current state has set, or null.</summary>
         public HitDef Hit;
@@ -92,6 +95,7 @@ namespace IK.Core {
         /// <summary>char.go `clearHitDef`: a state change invalidates the HitDef.</summary>
         public void ClearHitDef() {
             HitDefActive = false;
+            ReversalActive = false;
             if (Hit != null) Hit.Targets.Clear();
         }
 
@@ -167,6 +171,13 @@ namespace IK.Core {
             Ghv.FallRecover = hd.FallRecover;
             Ghv.FallRecoverTime = hd.FallRecoverTime;
             Ghv.FallKill = hd.FallKill;
+            Ghv.FallEnvShakeTime = hd.FallEnvShakeTime;
+            Ghv.FallEnvShakeFreq = hd.FallEnvShakeFreq;
+            Ghv.FallEnvShakeAmpl = hd.FallEnvShakeAmpl;
+            Ghv.FallEnvShakePhase = hd.FallEnvShakePhase;
+            StateOwner = null;
+            if (!guarded && hd.HitPalFx != null) PalFx.CopyFrom(hd.HitPalFx);
+            if (Engine != null) Engine.RemoveOnGetHit(this);
 
             if (guarded) {
                 Ghv.HitShakeTime = Math.Max(0, hd.GuardPauseTime[1]);
@@ -213,8 +224,14 @@ namespace IK.Core {
             if (air && attacker != null && !guarded) attacker.JugglePoints -= hd.AirJuggle;
 
             // state change
-            if (!guarded && hd.P2StateNo >= 0 && attacker != null) {
-                ForeignStates = hd.P2GetP1State ? attacker.States : States;
+            var ovr = guarded ? null : OverrideFor(hd.Attr);
+            if (ovr != null) {
+                if (ovr.ForceAir) { Type = StateType.Air; }
+                ForeignStates = null;
+                ChangeState(ovr.StateNo, "hitoverride");
+            } else if (!guarded && hd.P2StateNo >= 0 && attacker != null) {
+                ForeignStates = hd.P2GetP1State ? attacker.Root.States : States;
+                StateOwner = hd.P2GetP1State ? attacker : null;
                 ChangeState(hd.P2StateNo, "p2stateno from player " + attacker.Id);
             } else {
                 int next = guarded ? HitStates.GuardShakeState(this) : HitStates.GetHitShakeState(this);
@@ -246,13 +263,21 @@ namespace IK.Core {
             if (hd.P1GetP2Facing != 0 && target != null)
                 Facing = hd.P1GetP2Facing > 0 ? target.Facing : -target.Facing;
             if (hd.P1StateNo >= 0) ChangeState(hd.P1StateNo, "p1stateno");
+            if (target != null && !Targets.Contains(target)) Targets.Add(target);
             LastSparkNo = guarded ? hd.GuardSparkNo : hd.SparkNo;
             if (target != null) {
-                LastSparkX = (PosX + target.PosX) * 0.5f + hd.SparkXY[0] * Facing;
-                LastSparkY = hd.SparkXY[1];
+                // MUGEN: x from p2's front edge (negative = deeper into p2), y from p1's axis
+                float front = target.Type == StateType.Air ? target.Const.AirFront : target.Const.GroundFront;
+                LastSparkX = target.PosX - Facing * front + Facing * hd.SparkXY[0];
+                LastSparkY = PosY + hd.SparkXY[1];
+                if (Engine != null && LastSparkNo >= 0)
+                    Engine.AddSpark(this, LastSparkNo, guarded ? hd.GuardSparkFromChar : hd.SparkFromChar, LastSparkX, LastSparkY, Facing);
+                if (Engine != null && !guarded && hd.EnvShakeTime > 0)
+                    Engine.EnvShake(hd.EnvShakeTime, hd.EnvShakeFreq, hd.EnvShakeAmpl, hd.EnvShakePhase);
             }
             var snd = guarded ? hd.GuardSound : hd.HitSound;
-            if (snd[0] >= 0) PendingSounds.Add(new[] { snd[0], snd[1] });
+            bool ownSnd = guarded ? hd.GuardSoundFromChar : hd.HitSoundFromChar;
+            if (snd[0] >= 0) QueueSound(!ownSnd, snd[0], snd[1]);
         }
 
         /// <summary>Restores the character's own state file after a `p2stateno` sequence ends.</summary>
@@ -273,6 +298,14 @@ namespace IK.Core {
             VelX = VelY = 0f;
             AirJumpCount = 0;
             ForeignStates = null;
+            StateOwner = null;
+            Targets.Clear();
+            PalFx.Clear();
+            After.Time = 0; After.Frames.Clear();
+            BindTimeLeft = 0; BoundTo = null;
+            InitEx();
+            foreach (var h in HitOverrides) h.Time = 0;
+            foreach (var hb in HitBy) hb.Time = 0;
             ChangeState(0, "round reset");
             ChangeAnim(0);
         }

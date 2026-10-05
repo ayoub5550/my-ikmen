@@ -21,7 +21,7 @@ namespace IK.Core {
     /// Hit detection happens after the states have run, so a HitDef set this tick can connect on
     /// the same tick, exactly as in MUGEN.
     /// </summary>
-    public class FightEngine {
+    public partial class FightEngine {
         public readonly Fighter[] Players = new Fighter[2];
         public StageDefinition Stage;
         public StageCamera Camera;
@@ -69,6 +69,7 @@ namespace IK.Core {
                 Players[i].PlayerNo = i;
                 Players[i].Engine = this;
                 Players[i].JugglePoints = Players[i].Const.AirJuggle;
+                Chars.Add(Players[i]);
             }
             Stage = stage;
             Fight = fight;
@@ -85,7 +86,11 @@ namespace IK.Core {
             StartRound(1);
         }
 
-        public Fighter Opponent(Fighter f) => f == Players[0] ? Players[1] : Players[0];
+        public Fighter Opponent(Fighter f) {
+            if (f == null) return null;
+            var r = f.Root;
+            return r == Players[0] ? Players[1] : r == Players[1] ? Players[0] : (r.PlayerNo == 0 ? Players[1] : Players[0]);
+        }
 
         // ---- round flow ---------------------------------------------------------
 
@@ -95,6 +100,7 @@ namespace IK.Core {
             State = RoundState.Announce;
             StateTime = 0;
             RoundWinner = 0;
+            ClearRoundEntities();
             timerTicks = TimerCount > 0 ? TimerCount * FramesPerCount : -1;
             for (int i = 0; i < 2; i++) {
                 var f = Players[i];
@@ -139,49 +145,72 @@ namespace IK.Core {
             Tick_++;
             RoundTick++;
             HitsThisTick.Clear();
-            for (int i = 0; i < 2; i++) Players[i]?.BeginTick();
+            Sounds.Clear();
+            StopChannels.Clear();
+            if (Vibrate > 0) Vibrate--;
+            bool paused = Paused;
+            var snapshot = new List<Fighter>(Chars);
+            foreach (var c in snapshot) c.BeginTick();
 
             // 1. input: only while the players have control of the round
             bool inputAllowed = State == RoundState.Fighting || State == RoundState.Over;
             Players[0]?.SetInput(inputAllowed ? p1Input : CmdKey.None);
             Players[1]?.SetInput(inputAllowed ? p2Input : CmdKey.None);
 
-            // 2. facing: a grounded character with control turns to the opponent (char.go `turn`)
-            for (int i = 0; i < 2; i++) AutoTurn(Players[i], Players[1 - i]);
+            if (!paused) {
+                // 2. facing: a grounded character with control turns to the opponent (char.go `turn`)
+                for (int i = 0; i < 2; i++) AutoTurn(Players[i], Players[1 - i]);
 
-            // 3. guard distance of this tick, before the states run (`inguarddist`)
-            for (int i = 0; i < 2; i++) UpdateGuardDistance(Players[i], Players[1 - i]);
-            if (State == RoundState.Fighting)
-                for (int i = 0; i < 2; i++) EnterGuardIfHolding(Players[i]);
+                // 3. guard distance of this tick, before the states run (`inguarddist`)
+                for (int i = 0; i < 2; i++) UpdateGuardDistance(Players[i], Players[1 - i]);
+                if (State == RoundState.Fighting)
+                    for (int i = 0; i < 2; i++) EnterGuardIfHolding(Players[i]);
+            }
 
-            // 4. the characters
-            for (int i = 0; i < 2; i++) {
-                var f = Players[i];
-                if (f == null) continue;
+            // 4. the characters (players first, then helpers in creation order)
+            foreach (var f in snapshot) {
+                if (f == null || f.Destroyed) continue;
+                if (IsFrozen(f)) continue;
                 f.TickHitTimers();
                 if (f.InHitPause) { f.HitPauseTime--; continue; }
                 f.Tick();
             }
+            StepPause();
 
-            // 5. hit detection, after the states have set their HitDefs
-            if (State == RoundState.Fighting || State == RoundState.Over) {
-                CheckHits(Players[0], Players[1]);
-                CheckHits(Players[1], Players[0]);
+            // 5. projectiles and explods move, then hit detection
+            TickProjectiles(paused);
+            if (!paused && (State == RoundState.Fighting || State == RoundState.Over)) {
+                var all = new List<Fighter>(Chars);
+                foreach (var a in all) {
+                    if (a.Destroyed || !a.HitDefActive) continue;
+                    foreach (var b in all) {
+                        if (b == a || b.Destroyed || b.PlayerNo == a.PlayerNo) continue;
+                        CheckHits(a, b);
+                    }
+                }
+                CheckProjectileHits();
             }
+            TickExplods(paused);
+            RemoveDestroyedHelpers();
 
-            // 6. pushing and the screen bounds
-            PushApart();
-            ClampToStage();
+            if (!paused) {
+                // 6. pushing and the screen bounds
+                PushApart();
+                ClampToStage();
 
-            // 7. camera
-            if (Camera != null && Players[0] != null && Players[1] != null)
-                Camera.Update(Players[0].PosX, Players[1].PosX);
+                // 7. camera
+                if (Camera != null && Players[0] != null && Players[1] != null)
+                    Camera.Update(Players[0].PosX, Players[1].PosX);
 
-            // 8. the stage's own animations and scrolling state (Go `Stage.action`)
-            if (Stage != null) Stage.Tick();
+                // 8. the stage's own animations and scrolling state (Go `Stage.action`)
+                if (Stage != null) Stage.Tick();
 
-            // 9. round state machine and the bars
-            StepRound();
+                // 9. round state machine
+                StepRound();
+            }
+            StepShake();
+            AllPalFx.Tick();
+            BgPalFx.Tick();
             StepBars();
         }
 
@@ -194,6 +223,9 @@ namespace IK.Core {
             if (a.Move != MoveType.Attack) return;
             if (b.UnhittableTime > 0) return;
             if (hd.Targets.Contains(b.Id)) return;          // this HitDef already connected
+            if (!b.HittableBy(hd.Attr)) return;
+            if (b.IsHelper && b.WorldClsn(2).Count == 0) return;
+            if (TryReversal(a, b, hd)) return;
             if (!HitFlagAllows(hd, b)) return;
             if (!JuggleAllows(a, b, hd)) return;
             if (!Fighter.BoxesOverlap(a.WorldClsn(1), b.WorldClsn(2))) return;
@@ -202,6 +234,7 @@ namespace IK.Core {
             b.ApplyHit(a, hd, guarded);
             a.RegisterHit(b, hd, guarded);
             HitsThisTick.Add(new[] { a.PlayerNo, b.PlayerNo, guarded ? 1 : 0 });
+            if (SuperPauseP2DefMul != 1f) SuperPauseP2DefMul = 1f;
             if (hd.HitOnce > 0) a.HitDefActive = false;
             // corner push: the attacker is pushed back when the receiver is against a wall
             ApplyCornerPush(a, b, hd, guarded);
@@ -263,12 +296,20 @@ namespace IK.Core {
 
         void UpdateGuardDistance(Fighter f, Fighter enemy) {
             if (f == null || enemy == null) { if (f != null) f.InGuardDist = false; return; }
-            var hd = enemy.Hit;
-            bool threat = enemy.HitDefActive && hd != null && hd.IsValid && enemy.Move == MoveType.Attack;
-            if (!threat) { f.InGuardDist = false; return; }
-            float dist = Math.Abs(f.PosX - enemy.PosX);
-            float guardDist = hd.GuardDistX[0] > 0f ? hd.GuardDistX[0] : enemy.Const.AttackDist;
-            f.InGuardDist = dist <= guardDist;
+            f.InGuardDist = false;
+            foreach (var c in Chars) {
+                if (c.PlayerNo == f.PlayerNo || c.Destroyed) continue;
+                var hd = c.Hit;
+                bool threat = c.HitDefActive && hd != null && hd.IsValid && c.Move == MoveType.Attack;
+                if (!threat) continue;
+                float dist = Math.Abs(f.PosX - c.PosX);
+                float guardDist = hd.GuardDistX[0] > 0f ? hd.GuardDistX[0] : c.Const.AttackDist;
+                if (dist <= guardDist) { f.InGuardDist = true; return; }
+            }
+            foreach (var p in Projectiles) {
+                if (p.State != Projectile.Phase.Flying || p.Owner == null || p.Owner.PlayerNo == f.PlayerNo) continue;
+                if (Math.Abs(f.PosX - p.PosX) <= p.Owner.Const.ProjAttackDist) { f.InGuardDist = true; return; }
+            }
         }
 
         /// <summary>char.go: holding back inside the guard distance starts the guard state.</summary>
@@ -339,10 +380,12 @@ namespace IK.Core {
                     bool p1Ko = Players[0] != null && Players[0].Life <= 0;
                     bool p2Ko = Players[1] != null && Players[1].Life <= 0;
                     if (p1Ko || p2Ko) {
+                        LastRoundKO = true;
                         RoundWinner = p1Ko && p2Ko ? 3 : p1Ko ? 2 : 1;
                         State = RoundState.Over;
                         StateTime = 0;
                     } else if (timerTicks == 0) {
+                        LastRoundKO = false;
                         int l1 = Players[0] != null ? Players[0].Life : 0;
                         int l2 = Players[1] != null ? Players[1].Life : 0;
                         RoundWinner = l1 == l2 ? 3 : l1 > l2 ? 1 : 2;
