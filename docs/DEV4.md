@@ -24,7 +24,8 @@ KO and the win pose.
 | 9 | Fight screen | both fighters drawn on the stage with the camera, lifebars and HUD, driven by the dev.1 touch layer; P2 as a dummy with selectable behaviour (stand / guard / jump / walk) | **done** (`UI/FightScreen.cs`, `UI/StageRenderer.cs`) |
 | 10 | Player push | push boxes (`[Size] ground.front/back`), corner push, screen bounds, `width`/`playerpush` | **done** (`Core/FightEngine.cs`) |
 | 11 | Game data inside the APK | the stage, `data/fight.def`, `fight.sff/snd`, `fightfx`, `glyphs` and the ten `ikemen1` fonts packed into `Resources` (`tools/pack_resources.py`) | **done** (8.8 MiB, 33 files) |
-| 12 | Gates | compile, EditMode, rendered UI checks, APK, Firebase virtual device, owner's phone | compile 0 errors · EditMode **181/181** · rendered **114/114** @1280×720 · APK built · FTL **not run** (no service account) · phone **not run** |
+| 12 | HUD from the motif | `data/fight.def` + `fight.sff`: life/power bars with their clip ranges, the timer in the motif's bitmap font, round / fight / KO / time-over / winner announcements, win icons, names | **done** (`UI/FightHud.cs`, 21 tests) |
+| 13 | Gates | compile, EditMode, rendered UI checks, APK, Firebase virtual device, owner's phone | compile 0 errors · EditMode **202/202** · rendered **115/115** · APK built (`v0.1.0-dev.4`) · FTL **not run** (no service account) · phone **not run** |
 
 Not in dev.4, by decision: helpers, explods, projectiles, palette effects, AI beyond a dummy,
 menus and game modes, 4-player teams, ZSS scripting, rollback netcode. They are the following
@@ -46,8 +47,9 @@ touch layer and player 2 as a dummy (stand / guard / jump / walk, cycled with th
 
 Known gaps kept visible instead of being called done:
 
-- the HUD is drawn with the project's own primitives; the screenpack's own bar and announcement
-  **artwork** from `fight.sff` is the next step (`UI/FightHud.cs`);
+- HUD: no `xshear`, no `palfx` at all (`FightDef` does not parse it), no red life, no guard or
+  stun bar, no faces, no combo counter, only the normal win icon, no fades, no HUD sounds,
+  1v1 only — the project's own widgets stay as a fallback when the motif fails to load;
 - `BGCtrl` blocks are parsed but not executed, and stage zoom, screen shake, `window`/`maskwindow`
   deltas, element PalFX, rotation / shear / projection and stage models are not drawn;
 - `trans = sub` has no uGUI equivalent and is approximated with half transparency;

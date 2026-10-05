@@ -35,8 +35,9 @@ grep "Exiting batchmode successfully" "$PROJECT/Builds/validation/compile.log"
 Do not pass `-quit` with `-runTests`. Required cases: `docs/TOUCH_AND_SETTINGS.md` §6 (1–7),
 since dev.2 the loader cases in `Assets/IK/Tests/EditMode/MugenLoaderTests.cs`, and since
 dev.3 the engine cases in `Assets/IK/Tests/EditMode/FightEngineTests.cs` (expressions,
-commands, states, the KFM state machine and a 20 000-tick random-input soak). Current
-total: **110 cases**.
+commands, states, the KFM state machine and a 20 000-tick random-input soak). Since dev.4 also the hit system (`HitSystemTests.cs`), the stage
+(`StageTests.cs`, `StageRenderTests.cs`), the motif (`FightDefTests.cs`) and the HUD
+(`FightHudTests.cs`). Current total: **202 cases**.
 
 Engine expectations are taken from the character's own files or from the Go reference
 (`engine/ikemen-go/src/*.go`, `engine/ikemen-go/data/common1.cns.zss`). If one fails, read
@@ -72,7 +73,12 @@ No `-quit` (the runner exits itself with code 0 = pass). Use `-force-glcore`, ne
 Required cases: §6 (8–11) plus, since dev.3, §13 — the training screen: the fighter is
 drawn, walking moves it exactly `walk.fwd` per tick, the punch enters state 200 and fires
 one HitDef, the jump lands on y = 0, a quarter circle through *input frames* reaches state
-1000, Clsn boxes are drawn and the HUD text really renders. Current total: **97 checks**.
+1000, Clsn boxes are drawn and the HUD text really renders. Since dev.4 also §14 — the fight screen: the stage art is on
+screen, the camera scrolls the background, the screenpack HUD is built from `fight.sff`, a
+punch takes exactly the KFM damage, Clsn boxes are drawn and a scripted round reaches a KO.
+Current total: **115 checks**. The batch game view is 640×480 whatever `-screen` says, so a
+1280×720 motif is clipped horizontally in the PNGs — judge the HUD geometry from the numbers,
+not from the fixture crop.
 Output: JSON report + PNGs in `Builds/validation/` (`IK_UI_DIR` picks the folder).
 
 ## 4. Firebase Test Lab (virtual only)
