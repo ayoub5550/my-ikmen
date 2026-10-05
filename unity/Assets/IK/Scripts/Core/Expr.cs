@@ -201,6 +201,38 @@ namespace IK.Core {
             }
         }
 
+        /// <summary>
+        /// `AnimElem = n`, `AnimElem = n, m` and `AnimElem = n, &gt;= m`. MUGEN reads this as a
+        /// comparison on `AnimElemTime(n)`: plain `= n` means "the element starts this tick"
+        /// (time 0), the second term compares the elapsed time instead.
+        /// </summary>
+        class AnimElemCmp : Node {
+            public Node Element;
+            public Node Compare;        // null = compare with 0
+            public string Op = "=";     // operator of the second term
+            public bool Negate;         // `AnimElem != n`
+            public override float Eval(IExprContext ctx, Expr owner) {
+                float elem = Element != null ? Element.Eval(ctx, owner) : 0f;
+                float t;
+                if (ctx == null || !ctx.TryTrigger("animelemtime", null, elem, out t)) {
+                    owner.NoteUnknown("animelem");
+                    return 0f;
+                }
+                float want = Compare != null ? Compare.Eval(ctx, owner) : 0f;
+                bool ok;
+                switch (Op) {
+                    case "!=": ok = Math.Abs(t - want) >= 0.0001f; break;
+                    case "<": ok = t < want; break;
+                    case "<=": ok = t <= want; break;
+                    case ">": ok = t > want; break;
+                    case ">=": ok = t >= want; break;
+                    default: ok = Math.Abs(t - want) < 0.0001f; break;
+                }
+                if (Negate) ok = !ok;
+                return ok ? 1f : 0f;
+            }
+        }
+
         class Call : Node {
             public string Name;
             public List<Node> Args = new List<Node>();
@@ -241,8 +273,16 @@ namespace IK.Core {
                     case "numhelper":
                     case "numprojid":
                     case "teammode": {
-                        string sa = Args.Count > 0 && Args[0] is StringConst sc ? sc.Value : null;
-                        if (ctx != null && ctx.TryTrigger(Name, sa, A(0), out var v)) return v;
+                        // `const(movement.yaccel)` parses as a trigger name, `var("x")` as a
+                        // string — both are really just the argument's text.
+                        string sa = null;
+                        bool nameArg = false;
+                        if (Args.Count > 0) {
+                            if (Args[0] is StringConst sc) { sa = sc.Value; nameArg = true; }
+                            else if (Args[0] is Trigger tr) { sa = tr.Name; nameArg = true; }
+                        }
+                        float arg = nameArg ? 0f : A(0);
+                        if (ctx != null && ctx.TryTrigger(Name, sa, arg, out var v)) return v;
                         owner.NoteUnknown(Name);
                         return 0f;
                     }
@@ -436,6 +476,24 @@ namespace IK.Core {
                      string.Equals(Cur.Text, "y", StringComparison.OrdinalIgnoreCase))) {
                     name = name + " " + Cur.Text;
                     Next();
+                }
+
+                // `AnimElem = n [, [op] m]` — a comparison on AnimElemTime(n), not on a value
+                if (string.Equals(name, "animelem", StringComparison.OrdinalIgnoreCase) &&
+                    Cur.Type == T.Op && (Cur.Text == "=" || Cur.Text == "!=")) {
+                    bool negate = Cur.Text == "!=";
+                    Next();
+                    var node = new AnimElemCmp { Negate = negate, Element = ParseComparison() };
+                    if (Cur.Type == T.Comma) {
+                        Next();
+                        if (Cur.Type == T.Op && (Cur.Text == "=" || Cur.Text == "!=" || Cur.Text == "<" ||
+                                                 Cur.Text == "<=" || Cur.Text == ">" || Cur.Text == ">=")) {
+                            node.Op = Cur.Text;
+                            Next();
+                        }
+                        node.Compare = ParseComparison();
+                    }
+                    return node;
                 }
 
                 // `command = "name"` and other string-valued triggers are handled by the

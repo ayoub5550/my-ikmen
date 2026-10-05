@@ -71,6 +71,24 @@ namespace IK.Core {
             }
         }
 
+        /// <summary>Ikemen `Animation.AnimTime`: ticks left before the action ends (0 on the last tick).</summary>
+        public int AnimTime => Time - TotalTime;
+
+        /// <summary>
+        /// Ikemen `Animation.AnimElemTime`: ticks since element <paramref name="elem"/>
+        /// (1-based) started — negative while the action has not reached it yet. This is what
+        /// `AnimElem = n` and `AnimElemTime(n)` read.
+        /// </summary>
+        public int AnimElemTime(int elem) {
+            if (elem > Frames.Count) {
+                int t = AnimTime;
+                return t > 0 ? 0 : t;
+            }
+            int e = Math.Max(0, elem) - 1, time = Time;
+            for (int i = 0; i < e && i < Frames.Count; i++) time -= Math.Max(0, Frames[i].Time);
+            return time;
+        }
+
         /// <summary>Total playing time in ticks; an infinite frame counts as 1 (Ikemen `GetLength`).</summary>
         public int Length {
             get {

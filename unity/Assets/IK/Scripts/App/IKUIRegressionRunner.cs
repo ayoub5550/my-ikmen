@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using IK.App;
+using IK.Core;
 using IK.Input;
 using IK.Settings;
 using IK.UI;
@@ -274,6 +275,121 @@ namespace IK.EditorTools {
             app.Show(Screen_.Main);
             yield return null;
 
+            // ---- 13. dev.3: the training screen actually plays the character ----
+            app.Menu.Root.Find("Training").GetComponent<Button>().onClick.Invoke();
+            yield return null; yield return null;
+            var training = app.Training;
+            Check(app.Current == Screen_.Training && training.Visible, "Menu opens the training screen");
+            Check(training.Fighter != null, "Fight engine starts from Resources" +
+                  (training.LoadError != null ? ": " + training.LoadError : ""));
+            Check(app.Touch.Visible, "Training shows the on-screen controls");
+
+            if (training.Fighter != null) {
+                var fighter = training.Fighter;
+                Check(training.States.States.Count == 59,
+                      "CNS + [Statedef -1] loaded on the device path: " + training.States.States.Count + " states");
+                Check(training.Commands.Commands.Count == 37,
+                      "CMD loaded on the device path: " + training.Commands.Commands.Count + " commands");
+                Check(fighter.StateNo == 0 && fighter.AnimNo == 0 && fighter.Ctrl,
+                      "The character starts standing with control");
+
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-idle.png");
+                Check(CountSpritePixels(Dir + "training-idle.png") > 1500,
+                      "The fighter is drawn on the training stage");
+
+                // walking: feed the engine the same frames the touch layer would
+                var right = new InputFrame { R = true };
+                for (int i = 0; i < 12; i++) training.Feed(right);
+                Check(fighter.StateNo == 20 && fighter.AnimNo == 20,
+                      "Holding forward walks (state " + fighter.StateNo + ", anim " + fighter.AnimNo + ")");
+                Check(Mathf.Abs(fighter.PosX - 2.4f * 12f) < 0.01f,
+                      "Walked 12 ticks at walk.fwd = 2.4 (x=" + fighter.PosX.ToString("0.00") + ")");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-walk.png");
+                Check(DifferentPixels(Dir + "training-idle.png", Dir + "training-walk.png") > 400,
+                      "Walking moves the character on screen");
+
+                for (int i = 0; i < 12; i++) training.Feed(new InputFrame());
+                Check(fighter.StateNo == 0, "Releasing the direction returns to standing");
+
+                // punching: the state, the HitDef and the HUD
+                training.Feed(new InputFrame { x = true });
+                Check(fighter.StateNo == 200 && fighter.Move == MoveType.Attack,
+                      "The light punch button enters state 200");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-punch.png");
+                Check(DifferentPixels(Dir + "training-idle.png", Dir + "training-punch.png") > 600,
+                      "The punch animation is drawn");
+                for (int i = 0; i < 20; i++) training.Feed(new InputFrame());
+                Check(fighter.HitDefCount == 1, "The HitDef of AnimElem = 3 fired once");
+                Check(training.LastCommand == "x", "The HUD reports the matched command (" + training.LastCommand + ")");
+
+                // jumping, driven only through input frames
+                for (int i = 0; i < 6; i++) training.Feed(new InputFrame { U = true });
+                Check(fighter.StateNo == 50 && fighter.Type == StateType.Air,
+                      "Up jumps into the air state (" + fighter.StateNo + ")");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-jump.png");
+                Check(DifferentPixels(Dir + "training-idle.png", Dir + "training-jump.png") > 600,
+                      "The jump is drawn above the floor");
+                for (int i = 0; i < 90; i++) training.Feed(new InputFrame());
+                Check(fighter.StateNo == 0 && Mathf.Abs(fighter.PosY) < 0.01f,
+                      "The jump lands back on the ground");
+
+                // a quarter-circle special through the same input path
+                training.ResetFighter();
+                fighter = training.Fighter;
+                for (int i = 0; i < 3; i++) training.Feed(new InputFrame { D = true });
+                for (int i = 0; i < 3; i++) training.Feed(new InputFrame { D = true, R = true });
+                for (int i = 0; i < 2; i++) training.Feed(new InputFrame { R = true });
+                training.Feed(new InputFrame { R = true, x = true });
+                Check(fighter.StateNo == 1000,
+                      "Quarter-circle forward + x is the Kung Fu Palm (state " + fighter.StateNo + ")");
+                Check(training.LastCommand == "QCF_x", "The matched command is QCF_x (" + training.LastCommand + ")");
+
+                // collision boxes over the fighter
+                training.ShowBoxesForTests(true);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-boxes.png");
+                training.ShowBoxesForTests(false);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-nobox.png");
+                Check(DifferentPixels(Dir + "training-boxes.png", Dir + "training-nobox.png") > 300,
+                      "Clsn boxes are drawn over the fighter");
+
+                // the HUD text must really be rendered, not just set: measure the pixels
+                // inside the label's own rectangle, whatever the fixture resolution is
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "training-hud.png");
+                CheckLabelPixels(Dir + "training-hud.png", PixelRect(training.HudRect),
+                                 "Training HUD text renders");
+
+                training.ResetFighter();
+                Check(training.Fighter.StateNo == 0 && training.Ticks == 0, "Reset restarts the fighter");
+
+                // 600 ticks of scripted play must not drift into an unknown trigger
+                var script = new[] {
+                    new InputFrame { R = true }, new InputFrame { L = true }, new InputFrame { D = true },
+                    new InputFrame { U = true }, new InputFrame { x = true }, new InputFrame { y = true },
+                    new InputFrame { a = true }, new InputFrame { D = true, x = true }, new InputFrame()
+                };
+                for (int i = 0; i < 600; i++) training.Feed(script[(i / 7) % script.Length]);
+                Check(training.Fighter.UnknownTriggers.Count == 0,
+                      "No unknown trigger after 600 ticks of play");
+                Check(training.Fighter.UnknownControllers.Count == 0,
+                      "No unrecognised state controller after 600 ticks of play");
+            }
+            app.Show(Screen_.Main);
+            yield return null;
+
             // ---- 11. labels render in both languages ----
             app.Show(Screen_.Main);
             yield return null;
@@ -334,6 +450,18 @@ namespace IK.EditorTools {
                 case ControlId.W: return f.w;
             }
             return false;
+        }
+
+        /// <summary>Screen-pixel rectangle of a uGUI element, for pixel checks.</summary>
+        static RectInt PixelRect(RectTransform rt) {
+            if (rt == null) return new RectInt(0, 0, 0, 0);
+            var corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+            int x0 = Mathf.FloorToInt(Mathf.Min(corners[0].x, corners[1].x, corners[2].x));
+            int y0 = Mathf.FloorToInt(Mathf.Min(corners[0].y, corners[1].y, corners[2].y));
+            int x1 = Mathf.CeilToInt(Mathf.Max(corners[0].x, corners[2].x, corners[3].x));
+            int y1 = Mathf.CeilToInt(Mathf.Max(corners[0].y, corners[2].y, corners[3].y));
+            return new RectInt(x0, y0, Mathf.Max(1, x1 - x0), Mathf.Max(1, y1 - y0));
         }
 
         static Transform FindRow(RectTransform root, string label) {

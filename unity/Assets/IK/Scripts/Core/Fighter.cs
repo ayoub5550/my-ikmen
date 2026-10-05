@@ -42,7 +42,13 @@ namespace IK.Core {
         public int Life, Power;
         public int AnimNo = -1;
         public MugenAnimation Anim;
-        public int AirJumpsLeft;
+        /// <summary>Air jumps already used since leaving the ground (char.go `airJumpCount`).</summary>
+        public int AirJumpCount;
+        /// <summary>`sysvar(1)`: the jump direction the common states latch (common1.cns.zss).</summary>
+        public int SysVar1;
+        /// <summary>`AssertSpecial` flags of the current tick (char.go `specialFlag`). They are
+        /// set while a state runs and read by the hard-coded keys of the next tick.</summary>
+        public bool NoWalk, NoJump, NoCrouch, NoStand, NoBrake, NoAirJump, NoAutoTurn, Intro, NoKO;
         public readonly int[] Vars = new int[60];
         public readonly float[] FVars = new float[40];
         public string LastHitDef;              // dev.3: recorded, not applied
@@ -66,8 +72,8 @@ namespace IK.Core {
             Commands = new CommandEngine(cmd);
             randomSource = random ?? DefaultRandom;
             Life = Const.Life;
-            AirJumpsLeft = Const.AirJumpNum;
             ChangeState(0, "spawn");
+            if (AnimNo < 0) ChangeAnim(0);      // state 0 picks its animation on its first tick
         }
 
         static readonly System.Random rng = new System.Random(12345);
@@ -79,7 +85,7 @@ namespace IK.Core {
         public void SetInput(CmdKey k) {
             previousKeys = keys;
             keys = k;
-            Commands.TrackCharges(k);
+            Commands.Facing = Facing;
             Commands.Step(k);
         }
 
@@ -93,18 +99,47 @@ namespace IK.Core {
             Time++;
             StateTime++;
 
-            RunState(-1);                  // the .cmd state: commands into state changes
-            int guard = 0;
-            int before;
+            CommonStates.BasicActions(this);   // the engine's hard-coded keys (char.go)
+            ClearSpecialFlags();               // char.go clears specialFlag right after them
+            RunState(-1);                      // the .cmd state: commands into state changes
+
+            RunCurrentState();
+            int stateBeforePhysics = StateNo;
+            ApplyPhysics();
+            // char.go runs a state entered by the engine itself (landing) in the same frame
+            if (StateNo != stateBeforePhysics) RunCurrentState();
+            Anim?.Tick();
+        }
+
+        /// <summary>Runs the current state, following ChangeState chains like MUGEN does.</summary>
+        void RunCurrentState() {
+            int guard = 0, before;
             do {
                 before = StateNo;
-                RunState(StateNo);
+                if (States != null && States.Get(StateNo) != null) RunState(StateNo);
+                else CommonStates.Apply(this);  // a common state the character did not override
                 guard++;
-            } while (StateNo != before && guard < 8);   // a ChangeState runs the new state too
+            } while (StateNo != before && guard < 8);
+        }
 
-            CommonStates.Apply(this);      // common movement states (0-109)
-            ApplyPhysics();
-            Anim?.Tick();
+        void ClearSpecialFlags() {
+            NoWalk = NoJump = NoCrouch = NoStand = NoBrake = NoAirJump = NoAutoTurn = Intro = NoKO = false;
+        }
+
+        /// <summary>Sets one `AssertSpecial` flag by name.</summary>
+        public void AssertSpecial(string flag) {
+            if (string.IsNullOrEmpty(flag)) return;
+            switch (flag.Trim().ToLowerInvariant()) {
+                case "nowalk": NoWalk = true; break;
+                case "nojump": NoJump = true; break;
+                case "nocrouch": NoCrouch = true; break;
+                case "nostand": NoStand = true; break;
+                case "nobrake": NoBrake = true; break;
+                case "noairjump": NoAirJump = true; break;
+                case "noautoturn": NoAutoTurn = true; break;
+                case "intro": Intro = true; break;
+                case "noko": NoKO = true; break;
+            }
         }
 
         void RunState(int no) {
@@ -209,6 +244,23 @@ namespace IK.Core {
                         int idx = EvalInt(c.Get("fv"));
                         float value = EvalFloat(c.Get("value"));
                         if (idx >= 0 && idx < FVars.Length) FVars[idx] = add ? FVars[idx] + value : value;
+                    } else {
+                        // the short form KFM uses: `var(1) = 0`, `fvar(2) = 1.5`
+                        foreach (var kv in c.Params) {
+                            string key = kv.Key.Trim().ToLowerInvariant();
+                            bool isF = key.StartsWith("fvar(");
+                            if (!isF && !key.StartsWith("var(")) continue;
+                            int open = key.IndexOf('('), close = key.IndexOf(')');
+                            if (open < 0 || close < open) continue;
+                            int idx = EvalInt(key.Substring(open + 1, close - open - 1));
+                            if (isF) {
+                                float value = EvalFloat(kv.Value);
+                                if (idx >= 0 && idx < FVars.Length) FVars[idx] = add ? FVars[idx] + value : value;
+                            } else {
+                                int value = EvalInt(kv.Value);
+                                if (idx >= 0 && idx < Vars.Length) Vars[idx] = add ? Vars[idx] + value : value;
+                            }
+                        }
                     }
                     break;
                 }
@@ -230,8 +282,12 @@ namespace IK.Core {
                     LastHitDef = c.Get("attr", "") + " dmg=" + c.Get("damage", "0");
                     HitDefCount++;
                     break;
-                case "null":
                 case "assertspecial":
+                    AssertSpecial(c.Get("flag"));
+                    AssertSpecial(c.Get("flag2"));
+                    AssertSpecial(c.Get("flag3"));
+                    break;
+                case "null":
                 case "sprpriority":
                 case "playerpush":
                 case "width":
@@ -251,9 +307,48 @@ namespace IK.Core {
                 case "helper":
                 case "destroyself":
                 case "selfanimexist":
+                // accepted but inert until dev.4 brings the opponent and the hit system
+                case "pause":
+                case "superpause":
+                case "posfreeze":
+                case "hitoverride":
+                case "reversaldef":
+                case "hitfalldamage":
+                case "hitfallvel":
+                case "hitfallset":
+                case "hitvelset":
+                case "hitadd":
+                case "targetbind":
+                case "bindtotarget":
+                case "bindtoparent":
+                case "bindtoroot":
+                case "targetstate":
+                case "targetlifeadd":
+                case "targetpoweradd":
+                case "targetfacing":
+                case "targetveladd":
+                case "targetvelset":
+                case "targetdrop":
+                case "stopsnd":
+                case "sndpan":
+                case "projectile":
+                case "lifeadd":
+                case "lifeset":
+                case "powerset":
+                case "defencemulset":
+                case "attackmulset":
+                case "angledraw":
+                case "angleset":
+                case "angleadd":
+                case "anglemul":
+                case "trans":
+                case "displaytoclipboard":
+                case "appendtoclipboard":
+                case "clearclipboard":
+                case "remappal":
                 case "gravity":
                     if (c.Type == "gravity") VelY += Const.YAccel;
-                    break;                  // deliberately ignored in dev.3
+                    break;                  // deliberately inert in dev.3
                 default:
                     UnknownControllers.Add(c.Type);
                     break;
@@ -277,6 +372,9 @@ namespace IK.Core {
             else CommonStates.EnterCommon(this, no);
         }
 
+        /// <summary>Does the character have this action? (`SelfAnimExist`)</summary>
+        public bool HasAnim(int no) => Character != null && Character.Air != null && Character.Air.Get(no) != null;
+
         public void ChangeAnim(int no, int elem = 1) {
             if (no < 0) return;
             var anim = Character?.Air?.Get(no);
@@ -287,24 +385,36 @@ namespace IK.Core {
             for (int i = 1; i < elem && i < anim.Frames.Count; i++) Anim.Tick();
         }
 
+        /// <summary>
+        /// char.go `posUpdate`: the position is moved with the *current* velocity first, and
+        /// only then friction or gravity are applied — a tick's state controllers therefore
+        /// see the velocity they set, and the friction of the next tick. After that the
+        /// engine's own landing rule runs: an airborne character that has crossed the ground
+        /// going down enters state 52 (except from the backwards hop, state 105).
+        /// </summary>
         void ApplyPhysics() {
+            PosX += VelX * Facing;
+            PosY += VelY;
+
             switch (Phys) {
                 case Physics.Stand:
                     VelX *= Const.StandFriction;
-                    if (Math.Abs(VelX) < Const.StandFrictionThreshold * 0.1f) VelX = 0f;
+                    if (Math.Abs(VelX) < PhysicsEpsilon) VelX = 0f;
                     break;
                 case Physics.Crouch:
                     VelX *= Const.CrouchFriction;
-                    if (Math.Abs(VelX) < Const.CrouchFrictionThreshold) VelX = 0f;
                     break;
                 case Physics.Air:
                     VelY += Const.YAccel;
                     break;
             }
-            PosX += VelX * Facing;
-            PosY += VelY;
-            if (PosY > 0f) { PosY = 0f; }       // the ground is y = 0
+
+            if (Phys == Physics.Air && VelY > 0f && PosY >= 0f && StateNo != CommonStates.HopBack)
+                ChangeState(CommonStates.JumpLand, "landed");
         }
+
+        /// <summary>Velocities below this are snapped to zero (char.go `1/originLs`).</summary>
+        public const float PhysicsEpsilon = 1f;
 
         public bool OnGround => PosY >= -0.001f;
 
@@ -328,10 +438,10 @@ namespace IK.Core {
                 case "power": value = Power; return true;
                 case "powermax": value = 3000; return true;
                 case "anim": value = AnimNo; return true;
-                case "animtime": value = Anim != null ? (Anim.TotalTime == -1 ? -1 : Anim.Time - Anim.TotalTime) : 0; return true;
-                case "animelem": value = Anim != null && Anim.CurrentElement + 1 == (int)argValue ? 1 : 0; return true;
+                case "animtime": value = Anim != null ? Anim.AnimTime : 0; return true;
+                case "animelem": value = Anim != null && Anim.AnimElemTime((int)argValue) == 0 ? 1 : 0; return true;
                 case "animelemno": value = Anim != null ? Anim.CurrentElement + 1 : 0; return true;
-                case "animelemtime": value = Anim != null ? Anim.ElementTime : 0; return true;
+                case "animelemtime": value = Anim != null ? Anim.AnimElemTime((int)argValue) : 0; return true;
                 case "animexist":
                 case "selfanimexist": value = Character?.Air?.Get((int)argValue) != null ? 1 : 0; return true;
                 case "vel x": value = VelX; return true;

@@ -14,6 +14,8 @@ namespace IK.Core {
         public float RunBackX = -4.5f, RunBackY = -3.8f;
         public float JumpNeuX = 0f, JumpNeuY = -8.4f;
         public float JumpBack = -2.55f, JumpFwd = 2.5f;
+        public float RunJumpFwdX = 4f, RunJumpFwdY = -8.1f;
+        public float RunJumpBackX = -2.55f, RunJumpBackY = -8.1f;
         public float AirJumpNeuY = -8.1f, AirJumpBack = -2.55f, AirJumpFwd = 2.5f;
 
         public int AirJumpNum = 1;
@@ -48,6 +50,8 @@ namespace IK.Core {
                 Pair(vel.Get("jump.neu"), ref c.JumpNeuX, ref c.JumpNeuY);
                 c.JumpBack = vel.GetFloat("jump.back", c.JumpBack);
                 c.JumpFwd = vel.GetFloat("jump.fwd", c.JumpFwd);
+                Pair(vel.Get("runjump.fwd"), ref c.RunJumpFwdX, ref c.RunJumpFwdY);
+                Pair(vel.Get("runjump.back"), ref c.RunJumpBackX, ref c.RunJumpBackY);
                 float dummy = 0f;
                 Pair(vel.Get("airjump.neu"), ref dummy, ref c.AirJumpNeuY);
                 c.AirJumpBack = vel.GetFloat("airjump.back", c.AirJumpBack);
