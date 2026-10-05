@@ -390,6 +390,108 @@ namespace IK.EditorTools {
             app.Show(Screen_.Main);
             yield return null;
 
+            // ---- 14. dev.4: the fight screen, the stage and the hit system on screen ----
+            app.Menu.Root.Find("Fight").GetComponent<Button>().onClick.Invoke();
+            yield return null; yield return null;
+            var fight = app.Fight;
+            Check(app.Current == Screen_.Fight && fight.Visible, "Menu opens the fight screen");
+            Check(fight.Engine != null, "The fight loads from Resources" +
+                  (fight.LoadError != null ? ": " + fight.LoadError : ""));
+
+            if (fight.Engine != null) {
+                Check(fight.Stage != null && fight.Stage.Sprites != null,
+                      "The stage and its SFF come out of the APK's Resources");
+                Check(fight.Fight != null, "data/fight.def is loaded on the device path");
+                if (fight.Stage != null) {
+                    Check(fight.Stage.Backgrounds.Count > 0,
+                          "The stage has backgrounds (" + fight.Stage.Backgrounds.Count + ")");
+                    Check(fight.Stage.ZOffset == 200, "kfm stage zoffset = " + fight.Stage.ZOffset);
+                }
+
+                Check(fight.FightSprites != null && fight.Hud != null && fight.Hud.Ready,
+                      "The screenpack HUD is built from fight.sff" +
+                      (fight.Hud != null && fight.Hud.LoadError != null ? ": " + fight.Hud.LoadError : ""));
+
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "fight-start.png");
+                // the stage art must really be on screen: the top half of the view cannot be
+                // the flat fallback colour any more
+                Check(CountBackgroundPixels(Dir + "fight-start.png") > 20000,
+                      "The stage background is drawn behind the fighters");
+                Check(CountSpritePixels(Dir + "fight-start.png") > 1500,
+                      "Both fighters are drawn on the stage");
+
+                // run the announcement out and punch: P2 must lose exactly the KFM damage
+                for (int i = 0; i < 70; i++) fight.Feed(new InputFrame());
+                Check(fight.Engine.State == RoundState.Fighting,
+                      "The round starts after the announcement (" + fight.Engine.State + ")");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "fight-fighting.png");
+
+                int lifeBefore = fight.Engine.P2.Life;
+                // walk into punching range (the stage starts the players 140 units apart),
+                // then light punch: the dummy stands still, so this must connect
+                int walked = 0;
+                while (Mathf.Abs(fight.Engine.P2.PosX - fight.Engine.P1.PosX) > 36f && walked++ < 200)
+                    fight.Feed(new InputFrame { R = true });
+                fight.Feed(new InputFrame { x = true });
+                for (int i = 0; i < 12; i++) fight.Feed(new InputFrame());
+                Check(fight.Engine.P2.Life < lifeBefore,
+                      "The punch connects and takes life (" + lifeBefore + " -> " + fight.Engine.P2.Life + ")");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "fight-hit.png");
+                Check(DifferentPixels(Dir + "fight-start.png", Dir + "fight-hit.png") > 1000,
+                      "The fight screen changes as the fight runs");
+
+                fight.ShowBoxesForTests(true);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "fight-boxes.png");
+                fight.ShowBoxesForTests(false);
+                Check(DifferentPixels(Dir + "fight-hit.png", Dir + "fight-boxes.png") > 300,
+                      "Clsn boxes are drawn in the fight");
+
+                // the camera scrolls the background: walking left changes the backdrop
+                string camBefore = Dir + "fight-cam0.png", camAfter = Dir + "fight-cam1.png";
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(camBefore);
+                for (int i = 0; i < 90; i++) fight.Feed(new InputFrame { L = true });
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(camAfter);
+                Check(DifferentPixels(camBefore, camAfter) > 1000, "The stage scrolls with the camera");
+
+                // a full round: knock P2 out by scripted punches, with no engine complaints
+                int guard = 0;
+                while (!fight.Engine.RoundOver && guard++ < 4000) {
+                    // close the distance, then keep punching until the dummy is knocked out
+                    if (Mathf.Abs(fight.Engine.P2.PosX - fight.Engine.P1.PosX) > 36f) {
+                        fight.Feed(new InputFrame { R = true });
+                        continue;
+                    }
+                    fight.Feed(new InputFrame { x = true });
+                    for (int i = 0; i < 8; i++) fight.Feed(new InputFrame());
+                }
+                Check(fight.Engine.RoundOver, "A scripted round reaches its end (guard=" + guard + ")");
+                Check(fight.Engine.P2.Life == 0 || fight.Engine.TimeLeft == 0,
+                      "The round ends by KO or by time (p2 life=" + fight.Engine.P2.Life +
+                      ", time=" + fight.Engine.TimeLeft + ")");
+                Check(fight.Engine.P1.HitCount > 0,
+                      "Punches landed during the round (hits=" + fight.Engine.P1.HitCount + ")");
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "fight-ko.png");
+                Check(fight.Engine.P1.UnknownControllers.Count == 0 &&
+                      fight.Engine.P2.UnknownControllers.Count == 0,
+                      "No unrecognised state controller during a whole round");
+            }
+            app.Show(Screen_.Main);
+            yield return null;
+
             // ---- 11. labels render in both languages ----
             app.Show(Screen_.Main);
             yield return null;
@@ -491,6 +593,25 @@ namespace IK.EditorTools {
                 }
             Check(changed > 300, id + " pressed state is visible (changed pixels=" + changed + ")");
             DestroyImmediate(normal); DestroyImmediate(pressed);
+        }
+
+        /// <summary>
+        /// Pixels in the upper half of the view that are not the flat fallback colour the fight
+        /// screen paints when no stage is loaded. A real stage fills that area with art.
+        /// </summary>
+        int CountBackgroundPixels(string path) {
+            var image = new Texture2D(2, 2);
+            image.LoadImage(File.ReadAllBytes(path));
+            var flat = new Color(0.05f, 0.06f, 0.09f);
+            int count = 0;
+            for (int y = image.height / 2; y < image.height * 9 / 10; y++)
+                for (int x = 0; x < image.width; x++) {
+                    var c = image.GetPixel(x, y);
+                    if (Mathf.Abs(c.r - flat.r) + Mathf.Abs(c.g - flat.g) + Mathf.Abs(c.b - flat.b) > 0.12f)
+                        count++;
+                }
+            DestroyImmediate(image);
+            return count;
         }
 
         /// <summary>Pixels inside the viewer stage that are not the flat background.</summary>

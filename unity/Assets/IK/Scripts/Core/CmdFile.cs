@@ -126,6 +126,25 @@ namespace IK.Core {
             get { int n = 0; foreach (var c in completed) if (c) n++; return n; }
         }
 
+        /// <summary>
+        /// A private copy for one character: the parsed steps are shared (they never change),
+        /// the matching state is not. Without this, two fighters built from the same `CmdFile`
+        /// would overwrite each other's command progress — the second player's input would
+        /// clear the first player's matched command in the same tick (found by the dev.4
+        /// two-player tests).
+        /// </summary>
+        public MugenCommand CloneForPlayer() {
+            var c = new MugenCommand {
+                Name = Name, Source = Source, MaxTime = MaxTime, MaxBufTime = MaxBufTime,
+                MaxStepTime = MaxStepTime, AutoGreater = AutoGreater,
+            };
+            c.Steps.AddRange(Steps);
+            c.completed = new bool[completed.Length];
+            c.stepTimers = new int[stepTimers.Length];
+            c.loopOrder.AddRange(loopOrder);
+            return c;
+        }
+
         public void Clear(bool bufReset) {
             curTime = 0;
             if (bufReset) curBufTime = 0;
@@ -605,7 +624,9 @@ namespace IK.Core {
         public readonly List<string> JustCompleted = new List<string>();
 
         public CommandEngine(CmdFile file) {
-            if (file != null) commands.AddRange(file.Commands);
+            // every character gets its own copies: the matching state is per player
+            if (file != null)
+                foreach (var c in file.Commands) commands.Add(c.CloneForPlayer());
         }
 
         public void Reset() {

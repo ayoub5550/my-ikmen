@@ -5,7 +5,7 @@ using IK.Settings;
 using IK.UI;
 
 namespace IK.App {
-    public enum Screen_ { Main, InputTest, Settings, Layout, Viewer, Training }
+    public enum Screen_ { Main, InputTest, Settings, Layout, Viewer, Training, Fight }
 
     /// <summary>
     /// dev.1 application shell: builds every screen from code, owns the canvases and the
@@ -26,6 +26,7 @@ namespace IK.App {
         public LayoutEditor Layout { get; private set; }
         public CharViewer Viewer { get; private set; }
         public TrainingScreen Training { get; private set; }
+        public FightScreen Fight { get; private set; }
         public InputDisplay Display { get; private set; }
         public Screen_ Current { get; private set; } = Screen_.Main;
 
@@ -68,6 +69,7 @@ namespace IK.App {
             Menu.onSettings = () => Show(Screen_.Settings);
             Menu.onViewer = () => Show(Screen_.Viewer);
             Menu.onTraining = () => Show(Screen_.Training);
+            Menu.onFight = () => Show(Screen_.Fight);
 
             Settings = gameObject.AddComponent<SettingsMenu>();
             Settings.Build(root);
@@ -82,6 +84,10 @@ namespace IK.App {
             Training = gameObject.AddComponent<TrainingScreen>();
             Training.Build(root);
             Training.onBack = () => Show(Screen_.Main);
+
+            Fight = gameObject.AddComponent<FightScreen>();
+            Fight.Build(root);
+            Fight.onBack = () => Show(Screen_.Main);
 
             Layout = gameObject.AddComponent<LayoutEditor>();
             Layout.Build(root);
@@ -99,7 +105,8 @@ namespace IK.App {
             AudioListener.volume = s.masterVolume / 100f;
             Touch.Build((RectTransform)TouchCanvas.transform, s);
             Router.Configure(s);
-            Router.allowTouchControls = Current == Screen_.InputTest || Current == Screen_.Training;
+            Router.allowTouchControls = Current == Screen_.InputTest || Current == Screen_.Training ||
+                                        Current == Screen_.Fight;
             Touch.SetVisible(Router.allowTouchControls);
         }
 
@@ -110,18 +117,22 @@ namespace IK.App {
             Layout.SetVisible(screen == Screen_.Layout);
             Viewer.SetVisible(screen == Screen_.Viewer);
             Training.SetVisible(screen == Screen_.Training);
+            Fight.SetVisible(screen == Screen_.Fight);
             Display.gameObject.SetActive(screen == Screen_.InputTest);
-            bool wantTouch = screen == Screen_.InputTest || screen == Screen_.Training;
+            bool wantTouch = screen == Screen_.InputTest || screen == Screen_.Training ||
+                             screen == Screen_.Fight;
             Router.allowTouchControls = wantTouch;
             Touch.SetVisible(wantTouch);
             // button assist runs in a match and on the input-test screen, like Ikemen
-            Router.paused = screen != Screen_.InputTest && screen != Screen_.Training;
+            Router.paused = screen != Screen_.InputTest && screen != Screen_.Training &&
+                            screen != Screen_.Fight;
             if (screen == Screen_.Layout) Layout.Refresh();
         }
 
         void OnTick(InputFrame frame) {
             if (Current == Screen_.InputTest) Display.Feed(frame, Router.TickCount);
             else if (Current == Screen_.Training) Training.Feed(frame);
+            else if (Current == Screen_.Fight) Fight.Feed(frame);
         }
 
         void Update() {
