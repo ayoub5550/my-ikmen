@@ -101,8 +101,8 @@ namespace IK.EditorTools {
             yield return null;
             var sel = app.Select;
             Check(app.Current == Screen_.Select && sel.Visible && sel.Mode == GameMode.Versus, "Title → VS MODE opens the select screen");
-            Check(sel.Roster != null && sel.Roster.Characters.Count == 2 && sel.Roster.Cells.Count == 3,
-                  "Roster from select.def: kfm, kfm720 + random (" + (sel.Roster != null ? sel.Roster.Cells.Count : 0) + " cells)");
+            Check(sel.Roster != null && sel.Roster.Characters.Count == 4 && sel.Roster.Cells.Count == 5,
+                  "Roster from select.def: kfm_zss, kfm720, kfm_zaxis, kfm + random (" + (sel.Roster != null ? sel.Roster.Cells.Count : 0) + " cells)");
             Check(sel.Roster != null && sel.Roster.Stages.Count == 6, "Six 2D stages in the stage list");
             sel.Step(30);
             Canvas.ForceUpdateCanvases();
@@ -133,7 +133,7 @@ namespace IK.EditorTools {
             // the whole selection by taps: cell, cell again, palette, opponent, stage, level
             var cellHit = sel.View.Top.Find("grid").Find("cell0").GetComponent<Button>();
             cellHit.onClick.Invoke();
-            Check(sel.Current == SelectScreen.Phase.P1Pal && sel.P1Char.CharDef == "kfm.def", "Tapping the active cell confirms P1 (" + sel.Current + ")");
+            Check(sel.Current == SelectScreen.Phase.P1Pal && sel.P1Char.CharDef == "kfm_zss.def", "Tapping the active cell confirms P1 (" + sel.Current + ")");
             sel.View.Top.Find("Right").GetComponent<Button>().onClick.Invoke();
             Check(sel.P1Pal == 2, "The > button picks palette 2");
             sel.Step(2);
@@ -169,7 +169,7 @@ namespace IK.EditorTools {
             var m = app.Flow.Current;
             Check(app.Current == Screen_.Versus && m != null, "Selection done → VS screen (" + app.Current + ")");
             if (m != null) {
-                Check(m.Mode == GameMode.Versus && m.Players[0].CharGroup == "chars/kfm" && m.Players[0].Palette == 2 &&
+                Check(m.Mode == GameMode.Versus && m.Players[0].CharGroup == "chars/kfm_zss" && m.Players[0].Palette == 2 &&
                       m.Players[1].CharGroup == "chars/kfm720" && m.Players[1].AiLevel == level && m.Players[0].AiLevel == 0 &&
                       m.StageDef == "kfm.def",
                       "MatchSetup carries the choices (p1 " + m.Players[0].CharGroup + " pal " + m.Players[0].Palette + ", p2 " +
