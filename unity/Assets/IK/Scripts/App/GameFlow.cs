@@ -4,7 +4,7 @@ using IK.Core;
 
 namespace IK.App {
     /// <summary>Front-end screens the flow moves between.</summary>
-    public enum FlowStep { Title, Select, Versus, Fight, Victory, Continue, GameOver, WinScreen, SurvivalResults }
+    public enum FlowStep { Title, Select, Versus, Fight, Victory, Continue, GameOver, WinScreen, SurvivalResults, TimeAttackResults }
 
     /// <summary>
     /// The game-mode state machine of the front end, as plain C# so it is unit tested without a
@@ -44,6 +44,16 @@ namespace IK.App {
         public MatchResult LastResult { get; private set; }
         public MatchSetup Current { get; private set; }
 
+        /// <summary>dev.6: team game (title menu "Team Arcade" / "Team Versus").</summary>
+        public bool TeamGame { get; private set; }
+        public TeamMode Teams { get; private set; } = TeamMode.Single;
+        public int TeamSize { get; private set; } = 1;
+        /// <summary>Members after the leader picked on the select screen (P1, and P2 where the player picks it).</summary>
+        public readonly List<RosterChar> P1Partners = new List<RosterChar>();
+        public readonly List<RosterChar> P2Partners = new List<RosterChar>();
+        /// <summary>Time attack: ticks of every won match so far (the clear time).</summary>
+        public int TotalTicks { get; private set; }
+
         readonly Random rng;
 
         public GameFlow(int seed = 0) { rng = seed == 0 ? new Random() : new Random(seed); }
@@ -55,6 +65,10 @@ namespace IK.App {
         public static bool PicksStage(GameMode m) => PicksOpponent(m);
         /// <summary>The CPU difficulty chooser is shown in these modes (arcade/survival use Options → difficulty).</summary>
         public static bool PicksDifficulty(GameMode m) => m == GameMode.Versus || m == GameMode.Watch;
+        /// <summary>Modes that walk the arcade ladder.</summary>
+        public static bool IsLadder(GameMode m) => m == GameMode.Arcade || m == GameMode.TimeAttack;
+        /// <summary>Modes the title offers as a team game.</summary>
+        public static bool AllowsTeams(GameMode m) => m == GameMode.Arcade || m == GameMode.Versus || m == GameMode.Watch;
         public static bool ShowsVersusScreen(GameMode m) => m != GameMode.Training;
         /// <summary>Motif `title.&lt;mode&gt;.text` key for the select screen title.</summary>
         public static string TitleKey(GameMode m) {
@@ -63,6 +77,7 @@ namespace IK.App {
                 case GameMode.Versus: return "versus";
                 case GameMode.Training: return "training";
                 case GameMode.Survival: return "survival";
+                case GameMode.TimeAttack: return "timeattack";
                 default: return "watch";
             }
         }
@@ -83,8 +98,12 @@ namespace IK.App {
         // ------------------------------------------------------------------ driving
 
         /// <summary>Title menu picked a mode: go to the select screen.</summary>
-        public FlowStep Start(GameMode mode, Roster roster) {
+        public FlowStep Start(GameMode mode, Roster roster, bool team = false) {
             Mode = mode;
+            TeamGame = team && AllowsTeams(mode);
+            Teams = TeamMode.Single; TeamSize = 1;
+            P1Partners.Clear(); P2Partners.Clear();
+            TotalTicks = 0;
             Roster = roster ?? throw new ArgumentNullException(nameof(roster));
             Ladder.Clear();
             MatchIndex = 0; Wins = 0; Continues = 0; P1Life = null;
@@ -97,6 +116,17 @@ namespace IK.App {
         /// The select screen is done. <paramref name="p2"/> and <paramref name="stage"/> are only
         /// used in the modes where the player picks them; random cells are resolved here.
         /// </summary>
+        /// <summary>dev.6: the team menu of the select screen (call before <see cref="Selected"/>).
+        /// <paramref name="p1Partners"/> / <paramref name="p2Partners"/> are the members after the leader.</summary>
+        public void SetTeams(TeamMode teams, int size, IList<RosterChar> p1Partners, IList<RosterChar> p2Partners) {
+            Teams = TeamGame ? teams : TeamMode.Single;
+            TeamSize = Teams == TeamMode.Single ? 1 : Math.Max(2, Math.Min(4, size));
+            P1Partners.Clear(); P2Partners.Clear();
+            if (Teams == TeamMode.Single) return;
+            if (p1Partners != null) foreach (var c in p1Partners) if (P1Partners.Count < TeamSize - 1) P1Partners.Add(c);
+            if (p2Partners != null) foreach (var c in p2Partners) if (P2Partners.Count < TeamSize - 1) P2Partners.Add(c);
+        }
+
         public FlowStep Selected(RosterChar p1, int p1Pal, RosterChar p2 = null, int p2Pal = 1, string stage = null) {
             P1Char = Resolve(p1);
             P1Palette = Math.Max(1, p1Pal);
@@ -104,8 +134,12 @@ namespace IK.App {
             ChosenStage = PicksStage(Mode) ? stage : null;
             Ladder.Clear();
             MatchIndex = 0; Wins = 0; Continues = 0; P1Life = null;
+            for (int k = 0; k < P1Partners.Count; k++) P1Partners[k] = Resolve(P1Partners[k]);
+            for (int k = 0; k < P2Partners.Count; k++) P2Partners[k] = Resolve(P2Partners[k]);
+            while (P1Partners.Count < TeamSize - 1) P1Partners.Add(Roster.RandomChar(rng));
             switch (Mode) {
                 case GameMode.Arcade:
+                case GameMode.TimeAttack:
                     Ladder.AddRange(Roster.ArcadeLadder(rng, P1Char));
                     if (Ladder.Count == 0 && Roster.Characters.Count > 0) Ladder.Add(Roster.RandomChar(rng));
                     break;
@@ -139,7 +173,23 @@ namespace IK.App {
                 m.Players[1].Palette = m.Players[0].Palette == 1 ? 2 : 1;
             m.RoundsToWin = RoundsToWin;
             m.RoundTime = RoundTime;
+            if (Teams != TeamMode.Single) {
+                m.Teams = Teams;
+                foreach (var c in P1Partners) { var ps = new PlayerSetup(); Fill(ps, c, 1); m.Partners[0].Add(ps); }
+                // the opponent team: the chosen members (versus / watch), else random CPUs
+                bool chosen = PicksOpponent(Mode);
+                for (int k = 0; k < TeamSize - 1; k++) {
+                    var c = chosen && k < P2Partners.Count ? P2Partners[k] : Roster.RandomChar(rng);
+                    var ps = new PlayerSetup(); Fill(ps, c, c == P2Char ? (m.Players[1].Palette == 1 ? 2 : 1) : 1);
+                    m.Partners[1].Add(ps);
+                }
+            }
             switch (Mode) {
+                case GameMode.TimeAttack:
+                    m.Players[0].AiLevel = 0;
+                    m.Players[1].AiLevel = ArcadeAiLevel(Difficulty, MatchIndex, Ladder.Count);
+                    m.RoundsToWin = 1;          // Ikemen time attack: one round per opponent
+                    break;
                 case GameMode.Arcade:
                     m.Players[0].AiLevel = 0;
                     m.Players[1].AiLevel = ArcadeAiLevel(Difficulty, MatchIndex, Ladder.Count);
@@ -165,6 +215,9 @@ namespace IK.App {
                     m.Players[1].AiLevel = Clamp(Difficulty);
                     break;
             }
+            // partners inherit the AI level of their side
+            for (int side = 0; side < 2; side++)
+                foreach (var ps in m.Partners[side]) ps.AiLevel = m.Players[side].AiLevel;
             m.StageDef = PickStage();
             Current = m;
         }
@@ -181,7 +234,7 @@ namespace IK.App {
         /// <summary>Chosen stage, else the opponent's own stage (MUGEN arcade), else a random one.</summary>
         string PickStage() {
             if (!string.IsNullOrEmpty(ChosenStage)) return ChosenStage;
-            if (P2Char != null && P2Char.Stages.Count > 0 && Mode == GameMode.Arcade) return P2Char.Stages[0];
+            if (P2Char != null && P2Char.Stages.Count > 0 && IsLadder(Mode)) return P2Char.Stages[0];
             if (Roster.Stages.Count > 0) return Roster.Stages[rng.Next(Roster.Stages.Count)].Def;
             return "kfm.def";
         }
@@ -200,6 +253,15 @@ namespace IK.App {
                     Wins++;
                     if (MatchIndex + 1 >= Ladder.Count) return Step = FlowStep.WinScreen;
                     return Step = FlowStep.Victory;
+                case GameMode.TimeAttack:
+                    // no continue: a loss ends the run (Ikemen time attack records only clears)
+                    if (!p1Won) return Step = FlowStep.GameOver;
+                    Wins++;
+                    TotalTicks += Math.Max(0, LastResult.Ticks);
+                    if (MatchIndex + 1 >= Ladder.Count) return Step = FlowStep.TimeAttackResults;
+                    MatchIndex++;
+                    BuildMatch();
+                    return Step = FlowStep.Versus;
                 case GameMode.Survival:
                     if (!p1Won) return Step = FlowStep.SurvivalResults;
                     Wins++;

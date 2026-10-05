@@ -29,9 +29,12 @@ namespace IK.UI {
         static readonly string[,] Menu = {
             // id          motif menu.itemname key       fallback       Loc key
             { "arcade",   "menuarcade",                 "ARCADE",      "fe.arcade" },
+            { "teamarcade", "menuarcade.teamarcade",    "TEAM ARCADE", "fe.teamarcade" },
             { "versus",   "menuversus",                 "VS MODE",     "fe.versus" },
+            { "teamversus", "menuversus.teamversus",    "TEAM VERSUS", "fe.teamversus" },
             { "training", "menupractice.training",      "TRAINING",    "fe.training" },
             { "survival", "menumission.survival",       "SURVIVAL",    "fe.survival" },
+            { "timeattack", "menumission.timeattack",   "TIME ATTACK", "fe.timeattack" },
             { "watch",    "menuwatch",                  "WATCH MODE",  "fe.watch" },
             { "options",  "options",                    "OPTIONS",     "fe.options" },
             { "credits",  "credits",                    "CREDITS",     "fe.credits" },
@@ -88,9 +91,9 @@ namespace IK.UI {
                 rt.sizeDelta = new Vector2(480f, spacing);
             }
             var small = FightText.Read(null, "", "", 2, 1);
-            footerLeft.Set(small, 6f, View.Height - 1f, "my-ikmen dev.5 · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
+            footerLeft.Set(small, 6f, View.Height - 1f, "my-ikmen dev.6 · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
             var right = FightText.Read(null, "", "", 2, -1);
-            footerRight.Set(right, View.Width - 6f, View.Height - 1f, "v0.1.0-dev.5", new Color(0.75f, 0.75f, 0.75f), true);
+            footerRight.Set(right, View.Width - 6f, View.Height - 1f, "v0.1.0-dev.6", new Color(0.75f, 0.75f, 0.75f), true);
         }
 
         protected override void OnShow() {

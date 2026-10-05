@@ -133,6 +133,7 @@ namespace IK.App {
             Select.onBack = () => Show(Screen_.Title);
             Select.onDone = (p1, pal1, p2, pal2, stage, level) => {
                 if (GameFlow.PicksDifficulty(Flow.Mode)) Flow.Difficulty = level;
+                Flow.SetTeams(Select.Teams, Select.TeamSize, Select.P1Partners, Select.P2Partners);
                 Go(Flow.Selected(p1, pal1, p2, pal2, stage));
             };
 
@@ -161,6 +162,9 @@ namespace IK.App {
             switch (id) {
                 case "arcade": StartMode(GameMode.Arcade); break;
                 case "versus": StartMode(GameMode.Versus); break;
+                case "teamarcade": StartMode(GameMode.Arcade, true); break;
+                case "teamversus": StartMode(GameMode.Versus, true); break;
+                case "timeattack": StartMode(GameMode.TimeAttack); break;
                 case "training": StartMode(GameMode.Training); break;
                 case "survival": StartMode(GameMode.Survival); break;
                 case "watch": StartMode(GameMode.Watch); break;
@@ -176,12 +180,12 @@ namespace IK.App {
         }
 
         /// <summary>Starts a game mode from the title: the select screen of that mode.</summary>
-        public void StartMode(GameMode mode) {
+        public void StartMode(GameMode mode, bool team = false) {
             var s = SettingsStore.Current;
             Flow.Difficulty = s.difficulty;
             Flow.RoundsToWin = s.roundsToWin;
             Flow.RoundTime = s.roundTime;
-            Go(Flow.Start(mode, MotifAssets.Roster));
+            Go(Flow.Start(mode, MotifAssets.Roster, team));
         }
 
         /// <summary>Moves to the screen of a flow step.</summary>
@@ -193,7 +197,7 @@ namespace IK.App {
                     break;
                 case FlowStep.Select:
                     InFlowMatch = false;
-                    Select.Begin(Flow.Mode, Flow.Roster, Flow.Difficulty);
+                    Select.Begin(Flow.Mode, Flow.Roster, Flow.Difficulty, Flow.TeamGame);
                     Show(Screen_.Select);
                     break;
                 case FlowStep.Versus:
@@ -219,6 +223,11 @@ namespace IK.App {
                 case FlowStep.WinScreen:
                     InFlowMatch = false;
                     Results.Begin(ResultsScreen.Kind.Win, Flow.Wins, Flow.Current != null ? Flow.Current.Players[0] : null);
+                    Show(Screen_.Results);
+                    break;
+                case FlowStep.TimeAttackResults:
+                    InFlowMatch = false;
+                    Results.Begin(ResultsScreen.Kind.TimeAttack, Flow.TotalTicks, Flow.Current != null ? Flow.Current.Players[0] : null);
                     Show(Screen_.Results);
                     break;
                 case FlowStep.SurvivalResults:

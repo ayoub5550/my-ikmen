@@ -152,6 +152,21 @@ namespace IK.UI {
             { "fe.survived",               new[] { "جولات صمدتَ فيها: {0}", "Rounds survived: {0}" } },
             { "fe.loading",                new[] { "جارٍ التحميل…", "Now loading…" } },
             { "fe.noFight",                new[] { "محرّك المباراة غير متاح بعد", "Match engine not available yet" } },
+            // dev.6: teams and time attack
+            { "fe.teamarcade",             new[] { "أركيد الفرق", "Team Arcade" } },
+            { "fe.teamversus",             new[] { "فرق ضد الحاسوب", "Team Versus" } },
+            { "fe.timeattack",             new[] { "سباق الزمن", "Time Attack" } },
+            { "fe.pickTeam",               new[] { "اختر نمط الفريق", "Choose the team mode" } },
+            { "fe.teamSingle",             new[] { "فردي", "Single" } },
+            { "fe.teamTurns",              new[] { "بالأدوار × {0}", "Turns × {0}" } },
+            { "fe.teamTag",                new[] { "تبديل (Tag) × {0}", "Tag × {0}" } },
+            { "fe.pickMember",             new[] { "اختر العضو {0} من {1}", "Choose member {0} of {1}" } },
+            { "fe.pickMemberP2",           new[] { "اختر عضو الخصم {0} من {1}", "Choose opponent member {0} of {1}" } },
+            { "fe.clearTime",              new[] { "زمن الإنهاء: {0}", "Clear time: {0}" } },
+            { "fe.bestTime",               new[] { "أفضل زمن: {0}", "Best time: {0}" } },
+            { "fe.newRecord",              new[] { "رقم قياسي جديد!", "New record!" } },
+            { "fight.tag",                 new[] { "تبديل", "TAG" } },
+            { "fight.team",                new[] { "الفريق {0}/{1}", "Team {0}/{1}" } },
             { "about.credits",             new[] { "شكر وتقدير", "Credits" } },
         };
 

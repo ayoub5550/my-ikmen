@@ -11,7 +11,7 @@ namespace IK.UI {
     /// time or on a tap, then the flow returns to the title.
     /// </summary>
     public class ResultsScreen : FrontEndScreen {
-        public enum Kind { Win, Survival, GameOver }
+        public enum Kind { Win, Survival, GameOver, TimeAttack }
         public Kind Mode { get; private set; }
         public int Count { get; private set; }
         public Action onDone;
@@ -53,10 +53,25 @@ namespace IK.UI {
                 case Kind.Survival:
                     Text = Loc.Arabic ? string.Format(Loc.T("fe.survived"), count)
                                       : FightHud.ReplaceFirst(m.Survival.Text.Text, "%i", count.ToString()); break;
+                case Kind.TimeAttack: {
+                    // count = clear time in ticks; the best one is kept in PlayerPrefs
+                    int best = PlayerPrefs.GetInt("ik.timeattack.best", 0);
+                    bool record = best <= 0 || count < best;
+                    if (record) { PlayerPrefs.SetInt("ik.timeattack.best", count); PlayerPrefs.Save(); best = count; }
+                    Text = string.Format(Loc.T("fe.clearTime"), FormatTicks(count)) + "\n" +
+                           (record ? Loc.T("fe.newRecord") : string.Format(Loc.T("fe.bestTime"), FormatTicks(best)));
+                    break;
+                }
                 default:
                     Text = Loc.T("fe.gameOver"); break;
             }
             Draw();
+        }
+
+        /// <summary>60 ticks = 1 s → "m:ss.cc".</summary>
+        public static string FormatTicks(int ticks) {
+            int cs = (int)Math.Round(Math.Max(0, ticks) * 100.0 / 60.0);
+            return string.Format("{0}:{1:00}.{2:00}", cs / 6000, cs / 100 % 60, cs % 100);
         }
 
         void Draw() {
