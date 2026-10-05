@@ -53,8 +53,32 @@ namespace IK.App {
 
         Screen_ settingsReturn = Screen_.Title;
 
+        /// <summary>
+        /// dev.8: the owner's own characters / stages: `files/chars/<name>/`, `files/stages/*.def`,
+        /// optional `files/data/select.def` (Android/data/com.ayoub.ikmen/files on the phone).
+        /// Not in the editor, so tests only see the APK content.
+        /// </summary>
+        static void SetupOwnContent() {
+            if (Application.isEditor) return;
+            var root = Application.persistentDataPath;
+            IK.Core.ContentSource.ExternalRoot = root;
+            try {
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "chars"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "stages"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "data"));
+                var readme = System.IO.Path.Combine(root, "README-content.txt");
+                if (!System.IO.File.Exists(readme))
+                    System.IO.File.WriteAllText(readme,
+                        "ضع الشخصيات في chars/<الاسم>/ والمراحل في stages/ (ملفات .def) ثم أعد تشغيل اللعبة.\n" +
+                        "يمكنك وضع select.def الخاص بك في data/ ليحل محل القائمة المدمجة.\n\n" +
+                        "Put characters in chars/<name>/ and stages in stages/ (.def files), then restart the game.\n" +
+                        "An own data/select.def replaces the built-in roster.\n");
+            } catch (System.Exception e) { Debug.LogWarning("[IK] content folders: " + e.Message); }
+        }
+
         void Awake() {
             Instance = this;
+            SetupOwnContent();
             var s = SettingsStore.Current;
             Loc.Apply(s.language);
             Application.targetFrameRate = s.fpsCap;

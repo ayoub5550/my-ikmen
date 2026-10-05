@@ -18,8 +18,10 @@ namespace IK.UI {
     /// </summary>
     public class MotifView : IDisposable {
         public readonly RectTransform Root;     // full screen, black outside the motif rect
-        public readonly RectTransform Area;     // localcoord rect
+        public readonly RectTransform Area;     // localcoord rect (height-fitted, clipped)
         public readonly RectTransform BgBack, Layer0, BgFront, Top;
+        /// <summary>dev.8: localcoord rects scaled to cover the whole screen, holding the background layers.</summary>
+        public readonly RectTransform BackCover, FrontCover, TopArea;
         public StageDefinition Background { get; private set; }
         public float Width => Motif.LocalCoord[0];
         public float Height => Motif.LocalCoord[1];
@@ -29,23 +31,38 @@ namespace IK.UI {
         public MotifView(RectTransform parent, string name) {
             Root = UIKit.Panel(parent, name, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.black);
             Root.GetComponent<Image>().raycastTarget = true;   // a screen swallows taps behind it
-            var go = new GameObject("motif", typeof(RectTransform));
-            go.transform.SetParent(Root, false);
-            Area = (RectTransform)go.transform;
-            Area.anchorMin = Area.anchorMax = new Vector2(0.5f, 0.5f);
-            Area.pivot = new Vector2(0.5f, 0.5f);
-            Area.sizeDelta = new Vector2(Width, Height);
-            // the canvas is 720 units high (UIKit reference): fit the motif by height
-            float s = 720f / Mathf.Max(1f, Height);
-            Area.localScale = new Vector3(s, s, 1f);
-            go.AddComponent<RectMask2D>();
-            BgBack = Layer("bgBack");
-            Layer0 = Layer("layer0");
-            BgFront = Layer("bgFront");
-            Top = Layer("top");
+            // dev.8: the background is drawn in rects that cover the whole screen (20:9 phones
+            // showed black bars beside the 16:9 art); menus and texts stay in the height-fitted
+            // motif area. Order: back background, layer 0, front background, top.
+            BackCover = MotifRect("bgCoverBack", true, false);
+            Area = MotifRect("motif", false, true);
+            FrontCover = MotifRect("bgCoverFront", true, false);
+            TopArea = MotifRect("motifTop", false, true);
+            BgBack = Layer(BackCover, "bgBack");
+            Layer0 = Layer(Area, "layer0");
+            BgFront = Layer(FrontCover, "bgFront");
+            Top = Layer(TopArea, "top");
         }
 
-        RectTransform Layer(string name) => UIKit.Panel(Area, name, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        RectTransform MotifRect(string name, bool cover, bool clip) {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(Root, false);
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(Width, Height);
+            // the canvas is 720 units high (UIKit reference): fit the motif by height
+            float s = 720f / Mathf.Max(1f, Height);
+            rt.localScale = new Vector3(s, s, 1f);
+            if (clip) go.AddComponent<RectMask2D>();
+            if (cover) {
+                var fit = go.AddComponent<MotifCoverFit>();
+                fit.Set(Width, Height);
+            }
+            return rt;
+        }
+
+        static RectTransform Layer(RectTransform parent, string name) => UIKit.Panel(parent, name, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
         /// <summary>Builds the `[&lt;prefix&gt;def]` background ("TitleBG", "SelectBG", ...).</summary>
         public void SetBackground(string prefix) {
@@ -59,8 +76,8 @@ namespace IK.UI {
             var clear = Background.BgClearColor;
             Root.GetComponent<Image>().color = Color.black;
             if (clear != null && (clear[0] | clear[1] | clear[2]) != 0) {
-                var img = Area.GetComponent<Image>();
-                if (img == null) img = Area.gameObject.AddComponent<Image>();
+                var img = BackCover.GetComponent<Image>();
+                if (img == null) img = BackCover.gameObject.AddComponent<Image>();
                 img.color = new Color(clear[0] / 255f, clear[1] / 255f, clear[2] / 255f);
                 img.raycastTarget = false;
             }
@@ -173,6 +190,9 @@ namespace IK.UI {
             public string Value { get; private set; } = "";
             public bool UsedBitmap { get; private set; }
 
+            /// <summary>dev.8: upper bound of the TrueType fallback height (0 = none).</summary>
+            public float MaxTtfHeight;
+
             public TextNode(Transform parent, string name, Vector2 parentOrigin) {
                 var go = new GameObject(name, typeof(RectTransform));
                 go.transform.SetParent(parent, false);
@@ -223,6 +243,7 @@ namespace IK.UI {
                 } else {
                     // TrueType fallback: same anchor point and alignment, height from the font size
                     float h = font != null ? Mathf.Max(18f, font.SizeY * ys * 1.25f) : 30f * ys;
+                    if (MaxTtfHeight > 0f) h = Mathf.Min(h, MaxTtfHeight);
                     fallback.enabled = Value.Length > 0;
                     fallback.fontSize = Mathf.RoundToInt(h);
                     fallback.color = color;

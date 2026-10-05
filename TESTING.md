@@ -71,6 +71,11 @@ tools/harness/build.sh            # UNITY_EDITOR_DIR=<Unity>/Editor if not /work
 Runs a CPU-vs-CPU match from the repository root and lists unknown triggers, controllers and ZSS
 warnings. It is a development aid, not a gate.
 
+dev.8 switches: `IK_CTRL0=1` prints every fighter idling in state 0 without control for ≥ 20
+ticks mid-round (the "stuck player"; must be 0), `IK_DUMP=<state>` lists the compiled
+controllers of P2's state, `IK_EVAL="expr|expr" IK_EVALT=<tick>` evaluates triggers on both
+fighters at a tick.
+
 ## 3. Rendered UI fixture
 
 ```sh

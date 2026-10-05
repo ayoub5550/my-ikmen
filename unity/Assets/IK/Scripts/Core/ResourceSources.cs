@@ -41,6 +41,115 @@ namespace IK.Core {
     }
 
     /// <summary>
+    /// dev.8: content copied by the owner onto the phone, MUGEN / Ikemen layout under the app's
+    /// files folder (`Android/data/com.ayoub.ikmen/files/chars/&lt;name&gt;/…`, `stages/…`,
+    /// optional `data/select.def`). File names are matched case-insensitively and with `\`
+    /// or `/` (content made on Windows); a name is looked up next to the .def first, then
+    /// from the content root (Ikemen's rule for `stages/x.sff`), then by its bare file name.
+    /// </summary>
+    public class ExternalSource : IResourceSource {
+        readonly string folder, root;
+        public ExternalSource(string folder, string root) { this.folder = folder; this.root = root; }
+
+        public byte[] Read(string fileName) {
+            if (string.IsNullOrEmpty(fileName)) return null;
+            try {
+                var f = fileName.Replace('\\', '/').Trim().Trim('"');
+                var p = Find(folder, f) ?? (root != null ? Find(root, f) : null);
+                if (p == null && f.IndexOf('/') >= 0) p = Find(folder, f.Substring(f.LastIndexOf('/') + 1));
+                return p != null ? System.IO.File.ReadAllBytes(p) : null;
+            } catch (Exception) { return null; }
+        }
+
+        /// <summary>Case-insensitive path walk; null when missing.</summary>
+        public static string Find(string dir, string rel) {
+            if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return null;
+            string cur = dir;
+            foreach (var part in rel.Split('/')) {
+                if (part.Length == 0 || part == ".") continue;
+                if (part == "..") { cur = System.IO.Path.GetDirectoryName(cur); if (cur == null) return null; continue; }
+                var exact = System.IO.Path.Combine(cur, part);
+                if (System.IO.File.Exists(exact) || System.IO.Directory.Exists(exact)) { cur = exact; continue; }
+                if (!System.IO.Directory.Exists(cur)) return null;
+                string match = null;
+                foreach (var e in System.IO.Directory.GetFileSystemEntries(cur))
+                    if (string.Equals(System.IO.Path.GetFileName(e), part, StringComparison.OrdinalIgnoreCase)) { match = e; break; }
+                if (match == null) return null;
+                cur = match;
+            }
+            return System.IO.File.Exists(cur) ? cur : null;
+        }
+    }
+
+    /// <summary>First source that has the file.</summary>
+    public class ChainSource : IResourceSource {
+        readonly IResourceSource[] sources;
+        public ChainSource(params IResourceSource[] s) { sources = s; }
+        public byte[] Read(string fileName) {
+            foreach (var s in sources) { var b = s != null ? s.Read(fileName) : null; if (b != null) return b; }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// dev.8: where a content group ("chars/kfm", "stages", "data") is read from: the APK's
+    /// Resources, then the owner's own content folder (<see cref="ExternalRoot"/>).
+    /// </summary>
+    public static class ContentSource {
+        /// <summary>Root of the owner's content (Application.persistentDataPath on the phone); null = APK only.</summary>
+        public static string ExternalRoot;
+
+        public static IResourceSource For(string group) {
+            var res = new ResourcesSource(group);
+            if (string.IsNullOrEmpty(ExternalRoot)) return res;
+            return new ChainSource(res, new ExternalSource(System.IO.Path.Combine(ExternalRoot, group), ExternalRoot));
+        }
+
+        /// <summary>The owner's own file (e.g. "data/select.def"), or null.</summary>
+        public static byte[] ReadExternal(string path) {
+            if (string.IsNullOrEmpty(ExternalRoot)) return null;
+            var p = ExternalSource.Find(ExternalRoot, path);
+            try { return p != null ? System.IO.File.ReadAllBytes(p) : null; } catch (Exception) { return null; }
+        }
+
+        /// <summary>Character folders under `chars/` with their .def (folder.def first, else the first .def).</summary>
+        public static List<string> ExternalChars() {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(ExternalRoot)) return list;
+            var dir = System.IO.Path.Combine(ExternalRoot, "chars");
+            if (!System.IO.Directory.Exists(dir)) return list;
+            try {
+                foreach (var d in System.IO.Directory.GetDirectories(dir)) {
+                    string name = System.IO.Path.GetFileName(d), pick = null;
+                    foreach (var f in System.IO.Directory.GetFiles(d)) {
+                        if (!f.EndsWith(".def", StringComparison.OrdinalIgnoreCase)) continue;
+                        var fn = System.IO.Path.GetFileName(f);
+                        if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(fn), name, StringComparison.OrdinalIgnoreCase)) { pick = fn; break; }
+                        if (pick == null && !fn.StartsWith("ending", StringComparison.OrdinalIgnoreCase) && !fn.StartsWith("intro", StringComparison.OrdinalIgnoreCase)) pick = fn;
+                    }
+                    if (pick != null) list.Add(name + "/" + pick);
+                }
+            } catch (Exception) { }
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
+        }
+
+        /// <summary>Stage .def files directly under `stages/`.</summary>
+        public static List<string> ExternalStages() {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(ExternalRoot)) return list;
+            var dir = System.IO.Path.Combine(ExternalRoot, "stages");
+            if (!System.IO.Directory.Exists(dir)) return list;
+            try {
+                foreach (var f in System.IO.Directory.GetFiles(dir))
+                    if (f.EndsWith(".def", StringComparison.OrdinalIgnoreCase)) list.Add("stages/" + System.IO.Path.GetFileName(f));
+            } catch (Exception) { }
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
+        }
+    }
+
+    /// <summary>
     /// Turns decoded SFF sprites into Unity sprites, and SND waves into AudioClips.
     /// Textures are RGBA32 and the pivot is placed on the MUGEN axis, so a sprite drawn at the
     /// character position lands exactly where the engine would draw it. Results are cached per

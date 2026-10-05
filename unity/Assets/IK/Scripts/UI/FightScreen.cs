@@ -473,7 +473,7 @@ namespace IK.UI {
             for (int side = 0; side < 2; side++) {
                 var members = new List<Fighter> { leaders[side] };
                 foreach (var ps in setup.Partners[side]) {
-                    var lc = LoadChar(new ResourcesSource(ps.CharGroup), ps.CharGroup + ":" + ps.CharDef, ps.CharDef);
+                    var lc = LoadChar(ContentSource.For(ps.CharGroup), ps.CharGroup + ":" + ps.CharDef, ps.CharDef);
                     var m = new Fighter(lc.Chr, lc.States, lc.Cmd);
                     m.PaletteNo = Math.Max(1, ps.Palette);
                     m.AiLevel = ps.AiLevel;
@@ -506,13 +506,13 @@ namespace IK.UI {
             var defs = new string[2];
             for (int i = 0; i < 2; i++) {
                 var p = setup.Players[i];
-                srcs[i] = new ResourcesSource(p.CharGroup);
+                srcs[i] = ContentSource.For(p.CharGroup);
                 keys[i] = p.CharGroup + ":" + p.CharDef;
                 defs[i] = p.CharDef;
             }
             Engine = null;
             LoadError = null;
-            Load(srcs, keys, defs, new ResourcesSource("stages"), setup.StageDef, new ResourcesSource("data"), setup);
+            Load(srcs, keys, defs, ContentSource.For("stages"), setup.StageDef, new ResourcesSource("data"), setup);
             DummyMode = setup.Players[1].AiLevel > 0 ? 4 : 0;
             bool training = setup.Mode == GameMode.Training;
             foreach (var b in devButtons) b.SetActive(training);

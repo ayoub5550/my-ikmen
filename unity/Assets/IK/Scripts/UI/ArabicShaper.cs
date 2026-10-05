@@ -79,6 +79,13 @@ namespace IK.UI {
         /// <summary>Shape + reorder a string for a left-to-right glyph renderer.</summary>
         public static string Shape(string input) {
             if (!ContainsArabic(input)) return input;
+            // dev.8: every line is reordered on its own (reordering the whole string moved
+            // line breaks and swapped lines: the About page lines overlapped)
+            if (input.IndexOf('\n') >= 0) {
+                var lines = input.Split('\n');
+                for (int i = 0; i < lines.Length; i++) lines[i] = Shape(lines[i]);
+                return string.Join("\n", lines);
+            }
             string shaped = Join(input);
             return Reorder(shaped);
         }

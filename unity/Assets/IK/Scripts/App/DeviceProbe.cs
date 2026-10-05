@@ -85,6 +85,9 @@ namespace IK.App {
             // 1. title: does the motif art (system.sff, PNG sprites) decode on this device?
             double t0 = PerfMonitor.Now;
             yield return new WaitForSecondsRealtime(1f);
+            Log("title after 1 s: sff index " + MotifAssets.SpritesIndexMs.ToString("0") + " ms, bg elements=" +
+                (app.Title != null && app.Title.View != null ? app.Title.View.DrawnBackgroundElements : -1) +
+                ", sprite decode error=" + (IK.Core.SffFile.LastDecodeError ?? "none"));
             yield return Shot("01-title-1s");
             float waited = 0f;
             while (!MotifAssets.Ready && waited < 30f) { yield return new WaitForSecondsRealtime(0.25f); waited += 0.25f; }

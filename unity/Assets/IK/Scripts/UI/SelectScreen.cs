@@ -154,10 +154,14 @@ namespace IK.UI {
             cellBgs.Clear(); cellFaces.Clear(); cellHits.Clear();
             int n = Roster.Cells.Count;
             Columns = Mathf.Clamp(Mathf.Min(Sel.Columns, n), 1, Mathf.Max(1, Sel.Columns));
-            Rows = Mathf.Clamp(Mathf.CeilToInt(n / (float)Columns), 1, Mathf.Max(1, Sel.Rows));
+            // dev.8: more characters than motif cells (own content): add rows and shrink the cells
+            // so every character stays reachable
+            int needRows = Mathf.Max(1, Mathf.CeilToInt(n / (float)Columns));
+            Rows = Mathf.Max(Mathf.Clamp(needRows, 1, Mathf.Max(1, Sel.Rows)), needRows);
             float pitch = Mathf.Max(1f, Sel.CellSize[0] + Sel.CellSpacing[0]);
             // the centre gap between the two portrait windows is ~320 units wide in ikemen1
             CellScale = Mathf.Clamp(300f / (Columns * pitch), 1f, 3f);
+            if (Rows > Mathf.Max(1, Sel.Rows)) CellScale *= Mathf.Max(0.3f, Mathf.Max(1, Sel.Rows) / (float)Rows);
             for (int i = 0; i < Columns * Rows; i++) {
                 int idx = i;
                 var r = CellRect(i);
