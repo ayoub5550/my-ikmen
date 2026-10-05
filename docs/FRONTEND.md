@@ -38,7 +38,7 @@ stage sounds, continue voices) through `MugenAssetCache.ClipFor`.
   draws motif backgrounds. `SearchPathSource` = Ikemen's motif search path.
 - `Core/Roster.cs` — `select.def` loader: cells, `randomselect`, `emptyslot`, char params (`order`,
   `music`, `includestage`), `[ExtraStages]`, `arcade/survival.maxmatches`, MUGEN arcade ladder,
-  and `Filter` that drops what the port cannot run (ZSS characters, 3D stages).
+  and `Filter` that drops what the port cannot run (3D stages; ZSS characters are allowed since `Roster.ZssSupported = true`).
 - `App/GameFlow.cs` — the mode state machine (pure C#).
 - `App/FightLauncher.cs` — the only seam to the fight: `FightScreen.StartMatch(MatchSetup,
   Action<MatchResult>)`; `onEnd` is called once after the win pose, or with `Aborted` from the

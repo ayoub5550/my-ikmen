@@ -18,3 +18,4 @@
 .idea/
 .worktrees/
 __pycache__/
+tools/harness/h.exe
