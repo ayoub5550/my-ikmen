@@ -42,6 +42,21 @@ namespace IK.Core {
             CurrentElement = 0; ElementTime = 0; Time = 0; LoopEnd = false;
         }
 
+        /// <summary>
+        /// A private playback copy of this action. The .air file holds one object per action
+        /// and is shared by every fighter, helper and explod that uses the character, so each
+        /// of them must own its playback state (dev.5 fix: KFM vs KFM ticked one shared
+        /// object twice per frame).
+        /// </summary>
+        public MugenAnimation Instance() {
+            var a = new MugenAnimation {
+                No = No, LoopStart = LoopStart, TotalTime = TotalTime, LoopTime = LoopTime,
+                PreLoopTime = PreLoopTime, CopyAction = CopyAction,
+            };
+            a.Frames.AddRange(Frames);
+            return a;
+        }
+
         /// <summary>Advances the action by one 60 Hz tick (Ikemen `Animation.Action`).</summary>
         public void Tick() {
             if (Frames.Count == 0) { LoopEnd = true; return; }

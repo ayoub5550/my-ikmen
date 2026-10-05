@@ -43,6 +43,9 @@ namespace IK.Core {
         public int HitPower;
         public int JugglePoints;
         public bool IsBound;
+        /// <summary>dev.5: the HitDef's `fall.envshake.*`, played by FallEnvShake.</summary>
+        public int FallEnvShakeTime;
+        public float FallEnvShakeFreq = 60f, FallEnvShakeAmpl = -4f, FallEnvShakePhase = float.NaN;
         /// <summary>Attacker's facing at the moment of the hit (`p2facing` handling).</summary>
         public int AttackerFacing = 1;
 

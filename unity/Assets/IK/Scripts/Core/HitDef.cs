@@ -77,6 +77,15 @@ namespace IK.Core {
         public int SparkNo = IErr, GuardSparkNo = IErr;
         public float[] SparkXY = { 0f, 0f };
         public int[] HitSound = { -1, 0 }, GuardSound = { -1, 0 };
+        /// <summary>dev.5: `S` prefix — spark from the attacker's own .air / sound from its own
+        /// .snd. Without it sparks come from fightfx and sounds from fight.snd.</summary>
+        public bool SparkFromChar, GuardSparkFromChar, HitSoundFromChar, GuardSoundFromChar;
+        /// <summary>dev.5: `envshake.*` (on hit) and `fall.envshake.*` (when the target lands).</summary>
+        public int EnvShakeTime, FallEnvShakeTime;
+        public float EnvShakeFreq = 60f, EnvShakeAmpl = -4f, EnvShakePhase = float.NaN;
+        public float FallEnvShakeFreq = 60f, FallEnvShakeAmpl = -4f, FallEnvShakePhase = float.NaN;
+        /// <summary>dev.5: `palfx.*` applied to the target on hit.</summary>
+        public PalFx HitPalFx;
 
         public HitKind GroundType = HitKind.High;
         public HitKind AirType = HitKind.Unknown;
@@ -168,11 +177,24 @@ namespace IK.Core {
                     }
                     case "pausetime": ReadInts(val, eval, hd.PauseTime); break;
                     case "guard.pausetime": ReadInts(val, eval, hd.GuardPauseTime); break;
-                    case "sparkno": hd.SparkNo = ReadSparkNo(val, eval, hd.SparkNo); break;
-                    case "guard.sparkno": hd.GuardSparkNo = ReadSparkNo(val, eval, hd.GuardSparkNo); break;
+                    case "sparkno": hd.SparkNo = ReadSparkNo(val, eval, hd.SparkNo); hd.SparkFromChar = HasPrefix(val, 'S'); break;
+                    case "guard.sparkno": hd.GuardSparkNo = ReadSparkNo(val, eval, hd.GuardSparkNo); hd.GuardSparkFromChar = HasPrefix(val, 'S'); break;
                     case "sparkxy": ReadFloats(val, eval, hd.SparkXY); break;
-                    case "hitsound": ReadInts(val, eval, hd.HitSound); break;
-                    case "guardsound": ReadInts(val, eval, hd.GuardSound); break;
+                    case "hitsound": hd.HitSoundFromChar = ReadSound(val, eval, hd.HitSound); break;
+                    case "guardsound": hd.GuardSoundFromChar = ReadSound(val, eval, hd.GuardSound); break;
+                    case "envshake.time": hd.EnvShakeTime = (int)Math.Round(eval(val)); break;
+                    case "envshake.freq": hd.EnvShakeFreq = eval(val); break;
+                    case "envshake.ampl": hd.EnvShakeAmpl = eval(val); break;
+                    case "envshake.phase": hd.EnvShakePhase = eval(val); break;
+                    case "fall.envshake.time": hd.FallEnvShakeTime = (int)Math.Round(eval(val)); break;
+                    case "fall.envshake.freq": hd.FallEnvShakeFreq = eval(val); break;
+                    case "fall.envshake.ampl": hd.FallEnvShakeAmpl = eval(val); break;
+                    case "fall.envshake.phase": hd.FallEnvShakePhase = eval(val); break;
+                    case "palfx.time": case "palfx.mul": case "palfx.add": case "palfx.color":
+                    case "palfx.sinadd": case "palfx.invertall":
+                        if (hd.HitPalFx == null) hd.HitPalFx = new PalFx();
+                        hd.HitPalFx.ReadParam(key.Substring(6), val, eval);
+                        break;
                     case "ground.type": hd.GroundType = ParseHitKind(val, HitKind.High); break;
                     case "air.type": hd.AirType = ParseHitKind(val, HitKind.Unknown); break;
                     case "ground.slidetime": hd.GroundSlideTime = (int)Math.Round(eval(val)); break;
@@ -242,11 +264,6 @@ namespace IK.Core {
                         break;
                     }
                     // known but not simulated yet: recorded so nothing is silently dropped
-                    case "palfx.time": case "palfx.mul": case "palfx.add": case "palfx.color":
-                    case "palfx.sinadd": case "palfx.invertall":
-                    case "envshake.time": case "envshake.freq": case "envshake.ampl": case "envshake.phase":
-                    case "fall.envshake.time": case "fall.envshake.freq": case "fall.envshake.ampl":
-                    case "fall.envshake.phase":
                     case "mindist": case "maxdist": case "snap": case "snaptime":
                     case "p1facing.x": case "persistent": case "ignorehitpause":
                     case "attack.width": case "attack.depth": case "sparkangle": case "sparkscale":
@@ -418,11 +435,31 @@ namespace IK.Core {
             if (string.IsNullOrWhiteSpace(val)) return fallback;
             string v = val.Trim();
             // "S10" means a spark from the character's own animations
-            if (v.Length > 1 && (v[0] == 'S' || v[0] == 's')) {
+            if (v.Length > 1 && (v[0] == 'S' || v[0] == 's' || v[0] == 'F' || v[0] == 'f')) {
                 int n;
                 if (int.TryParse(v.Substring(1).Trim(), out n)) return n;
             }
             return (int)Math.Round(eval(v));
+        }
+
+        static bool HasPrefix(string val, char p) {
+            if (string.IsNullOrWhiteSpace(val)) return false;
+            var v = val.TrimStart();
+            return v.Length > 1 && char.ToUpperInvariant(v[0]) == p && (char.IsDigit(v[1]) || v[1] == ' ' || v[1] == '-');
+        }
+
+        /// <summary>`hitsound = S5, 0` / `5, 0`; returns true for the `S` (own .snd) prefix.
+        /// `F` is accepted too and means fight.snd, the default.</summary>
+        public static bool ReadSound(string val, Func<string, float> eval, int[] into) {
+            var parts = MugenDef.SplitCsv(val);
+            bool own = false;
+            for (int i = 0; i < into.Length && i < parts.Length; i++) {
+                string p = parts[i].Trim();
+                if (i == 0 && p.Length > 1 && (p[0] == 'S' || p[0] == 's') && !char.IsLetter(p[1])) { own = true; p = p.Substring(1); }
+                else if (i == 0 && p.Length > 1 && (p[0] == 'F' || p[0] == 'f') && !char.IsLetter(p[1])) p = p.Substring(1);
+                if (p.Length > 0) into[i] = (int)Math.Round(eval(p));
+            }
+            return own;
         }
 
         static void ReadInts(string val, Func<string, float> eval, int[] into) {

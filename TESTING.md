@@ -37,7 +37,8 @@ since dev.2 the loader cases in `Assets/IK/Tests/EditMode/MugenLoaderTests.cs`, 
 dev.3 the engine cases in `Assets/IK/Tests/EditMode/FightEngineTests.cs` (expressions,
 commands, states, the KFM state machine and a 20 000-tick random-input soak). Since dev.4 also the hit system (`HitSystemTests.cs`), the stage
 (`StageTests.cs`, `StageRenderTests.cs`), the motif (`FightDefTests.cs`) and the HUD
-(`FightHudTests.cs`). Current total: **202 cases**.
+(`FightHudTests.cs`). Since dev.5 also `Dev5EngineTests.cs` (helpers, explods, projectiles,
+redirection, superpause, CPU), `ZssTests.cs`, `MotifTests.cs` and `RosterTests.cs`. Current total: **250 cases**.
 
 Engine expectations are taken from the character's own files or from the Go reference
 (`engine/ikemen-go/src/*.go`, `engine/ikemen-go/data/common1.cns.zss`). If one fails, read
@@ -60,6 +61,16 @@ python3 tools/sff_dump.py assets/screenpack/data/fightfx.sff --stage \
 decoded sprites as PNGs for eyeballing. Never regenerate a fixture to make a failing test
 pass — first prove the C# decoder is right.
 
+### Headless engine harness (no Unity, seconds)
+
+```sh
+tools/harness/build.sh            # UNITY_EDITOR_DIR=<Unity>/Editor if not /work/unity/editor/Editor
+"$UNITY_EDITOR_DIR/Data/MonoBleedingEdge/bin/mono" tools/harness/h.exe kfm_zss kfm 600 7200
+```
+
+Runs a CPU-vs-CPU match from the repository root and lists unknown triggers, controllers and ZSS
+warnings. It is a development aid, not a gate.
+
 ## 3. Rendered UI fixture
 
 ```sh
@@ -76,7 +87,8 @@ one HitDef, the jump lands on y = 0, a quarter circle through *input frames* rea
 1000, Clsn boxes are drawn and the HUD text really renders. Since dev.4 also §14 — the fight screen: the stage art is on
 screen, the camera scrolls the background, the screenpack HUD is built from `fight.sff`, a
 punch takes exactly the KFM damage, Clsn boxes are drawn and a scripted round reaches a KO.
-Current total: **115 checks**. The batch game view is 640×480 whatever `-screen` says, so a
+Since dev.5 also the front end: title (English and Arabic), select, stage select, VS, victory,
+continue, survival results, credits and a menu → fight flow. Current total: **163 checks**. The batch game view is 640×480 whatever `-screen` says, so a
 1280×720 motif is clipped horizontally in the PNGs — judge the HUD geometry from the numbers,
 not from the fixture crop.
 Output: JSON report + PNGs in `Builds/validation/` (`IK_UI_DIR` picks the folder).

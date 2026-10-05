@@ -16,6 +16,18 @@ namespace IK.Core {
         float Random999();
     }
 
+    /// <summary>A context that supports MUGEN trigger redirection (`root, var(1)`,
+    /// `helper(1200), pos x`, `enemynear, statetype = A`). Returns null when the
+    /// redirection target does not exist (the trigger then evaluates to 0).</summary>
+    /// <summary>A context whose variables expressions may assign (`var(1) := 2`).</summary>
+    public interface IAssignContext {
+        void Assign(string name, int index, float value);
+    }
+
+    public interface IRedirectContext : IExprContext {
+        IExprContext Redirect(string kind, int id, bool hasId);
+    }
+
     /// <summary>
     /// MUGEN trigger-expression parser and evaluator (the part of `compiler.go` a character
     /// actually needs). Numbers are floats; "true" is non-zero, as in MUGEN.
@@ -142,6 +154,41 @@ namespace IK.Core {
                 if (ctx != null && ctx.TryTrigger(Name, StringArg, argValue, out var v)) return v;
                 owner.NoteUnknown(Name);
                 return 0f;
+            }
+        }
+
+        class Redirect : Node {
+            public string Kind;
+            public Node IdArg;
+            public Node Inner;
+            public override float Eval(IExprContext ctx, Expr owner) {
+                if (!(ctx is IRedirectContext rc)) { owner.NoteUnknown(Kind + ","); return 0f; }
+                int id = IdArg != null ? (int)IdArg.Eval(ctx, owner) : 0;
+                var target = rc.Redirect(Kind, id, IdArg != null);
+                if (target == null) return 0f;
+                return Inner.Eval(target, owner);
+            }
+        }
+
+        /// <summary>`var(n) := expr` (also fvar, sysvar, sysfvar and ZSS locals): stores the
+        /// value through <see cref="IAssignContext"/> and evaluates to it.</summary>
+        class Assign : Node {
+            public Node Target, Value;
+            public static bool IsTarget(Node n) {
+                if (n is Call c) {
+                    switch (c.Name.ToLowerInvariant()) {
+                        case "var": case "fvar": case "sysvar": case "sysfvar": return true;
+                    }
+                }
+                return n is Trigger t && t.Name.StartsWith("zss__", StringComparison.OrdinalIgnoreCase);
+            }
+            public override float Eval(IExprContext ctx, Expr owner) {
+                float v = Value.Eval(ctx, owner);
+                var ac = ctx as IAssignContext;
+                if (ac == null) return v;
+                if (Target is Call c) ac.Assign(c.Name.ToLowerInvariant(), (int)(c.Args.Count > 0 ? c.Args[0].Eval(ctx, owner) : 0), v);
+                else if (Target is Trigger t) ac.Assign(t.Name.ToLowerInvariant(), 0, v);
+                return v;
             }
         }
 
@@ -272,6 +319,8 @@ namespace IK.Core {
                     case "numexplod":
                     case "numhelper":
                     case "numprojid":
+                    case "map":
+                    case "mugenversion":
                     case "teammode": {
                         // `const(movement.yaccel)` parses as a trigger name, `var("x")` as a
                         // string — both are really just the argument's text.
@@ -341,6 +390,10 @@ namespace IK.Core {
 
             Node ParseEquality() {
                 var a = ParseComparison();
+                if (IsOp(":=") && Assign.IsTarget(a)) {
+                    Next();
+                    return new Assign { Target = a, Value = ParseExpression() };
+                }
                 while (IsOp("=") || IsOp("!=") || IsOp(":=")) {
                     string op = Cur.Text == ":=" ? "=" : Cur.Text;
                     Next();
@@ -450,11 +503,42 @@ namespace IK.Core {
 
             static readonly HashSet<string> TwoWordTriggers = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                 "vel", "pos", "p2dist", "p2bodydist", "p1dist", "p1bodydist", "screenpos",
-                "parentdist", "rootdist", "animelem", "projhittime", "projcontacttime",
+                "parentdist", "rootdist", "animelem", "camerapos", "hitvel", "projhittime", "projcontacttime",
                 "projguardedtime", "projhit", "projcontact", "projguarded"
             };
 
+            static readonly HashSet<string> RedirectKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "parent", "root", "helper", "target", "partner", "enemy", "enemynear", "playerid", "p2", "stateowner", "helperindex"
+            };
+
+            /// <summary>`kind [ (id) ] ,` at the cursor? Looks ahead without consuming.</summary>
+            bool AtRedirect() {
+                if (Cur.Type != T.Name || !RedirectKinds.Contains(Cur.Text)) return false;
+                int j = i + 1;
+                if (t[j].Type == T.Comma) return true;
+                if (t[j].Type != T.LParen) return false;
+                int depth = 0;
+                for (; j < t.Count; j++) {
+                    if (t[j].Type == T.LParen) depth++;
+                    else if (t[j].Type == T.RParen) { depth--; if (depth == 0) break; }
+                    else if (t[j].Type == T.End) return false;
+                }
+                return j + 1 < t.Count && t[j + 1].Type == T.Comma;
+            }
+
             Node ParseName() {
+                if (AtRedirect()) {
+                    var r = new Redirect { Kind = Cur.Text.ToLowerInvariant() };
+                    Next();
+                    if (Cur.Type == T.LParen) {
+                        Next();
+                        r.IdArg = ParseExpression();
+                        if (Cur.Type == T.RParen) Next();
+                    }
+                    Next();   // the comma
+                    r.Inner = Cur.Type == T.Name ? ParseName() : ParsePrimary();
+                    return r;
+                }
                 string name = Cur.Text;
                 Next();
 
@@ -515,12 +599,23 @@ namespace IK.Core {
                     Next();
                     string value = Cur.Text;
                     Next();
-                    while (Cur.Type == T.Comma) { Next(); if (Cur.Type == T.Name) Next(); }   // attr lists
+                    // attr lists (`hitdefattr = SC, NA, SA`): keep them in the string argument,
+                    // but only while the next item looks like an attribute (letters, no `=`)
+                    while (Cur.Type == T.Comma && i + 1 < t.Count && t[i + 1].Type == T.Name &&
+                           IsAttrWord(t[i + 1].Text) && !(i + 2 < t.Count && t[i + 2].Type == T.Op)) {
+                        Next(); value += "," + Cur.Text; Next();
+                    }
                     var trig = new Trigger { Name = name, StringArg = value };
                     return op == "=" ? (Node)trig : new Unary { Op = "!", A = trig };
                 }
 
                 return new Trigger { Name = name };
+            }
+
+            static bool IsAttrWord(string w) {
+                if (w.Length != 2) return false;
+                char a = char.ToUpperInvariant(w[0]), b = char.ToUpperInvariant(w[1]);
+                return (a == 'N' || a == 'S' || a == 'H' || a == 'A') && (b == 'A' || b == 'T' || b == 'P');
             }
 
             static bool IsFlagTrigger(string name) {
@@ -532,6 +627,9 @@ namespace IK.Core {
                     case "p2statetype":
                     case "p2movetype":
                     case "hitpausetime":
+                    case "hitdefattr ":
+                    case "p1statetype":
+                    case "p1movetype":
                         return true;
                 }
                 return false;

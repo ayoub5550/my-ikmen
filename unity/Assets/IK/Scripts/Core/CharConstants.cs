@@ -6,6 +6,7 @@ namespace IK.Core {
     /// Values are in MUGEN units per tick, exactly as the file writes them.
     /// </summary>
     public class CharConstants {
+        public object Clone() => MemberwiseClone();
         public int Life = 1000, Attack = 100, Defence = 100;
         public float GroundBack = 15, GroundFront = 16, AirBack = 12, AirFront = 12, Height = 60;
 

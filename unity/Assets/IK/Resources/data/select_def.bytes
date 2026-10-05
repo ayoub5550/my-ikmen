@@ -1,0 +1,30 @@
+; my-ikmen roster (dev.5) — the select.def the game ships, packed as Resources/data/select_def.bytes.
+;
+; Derived from assets/screenpack/data/select.def (Ikemen GO screenpack, kept untouched as the
+; reference). Differences, all because of what this C# port can run today:
+;  - kfm (MUGEN 1.0 CNS) is added: the screenpack list only names its ZSS twin.
+;  - kfm_zss and kfm_zaxis are left out: their states are ZSS scripts (kfm.zss), which the
+;    engine does not interpret. The roster loader would drop them anyway (Roster.CharDefProblem).
+;  - stage3d / stage3d_outline are left out: 3D models are out of scope.
+; Format: MUGEN 1.0 select.def (name, stages..., order=n).
+
+[Characters]
+kfm_zss, stages/kfm.def
+kfm720, stages/stage0-720.def
+kfm_zaxis, stages/stageZ.def
+kfm, stages/stage0.def
+randomselect
+
+[ExtraStages]
+stages/kfm.def
+stages/stage0.def
+stages/stage0-720.def
+stages/stage1.def
+stages/stageZ.def
+stages/interactivestage.def
+
+[Options]
+arcade.maxmatches = 6,1,1,0,0,0,0,0,0,0
+team.maxmatches = 4,1,1,0,0,0,0,0,0,0
+timeattack.maxmatches = 6,1,1,0,0,0,0,0,0,0
+survival.maxmatches = -1,0,0,0,0,0,0,0,0,0

@@ -3,10 +3,14 @@ using UnityEngine;
 using UnityEngine.UI;
 
 namespace IK.UI {
-    /// <summary>Title screen. dev.1 only needs Input Test, Settings and About.</summary>
+    /// <summary>
+    /// The Developer menu (dev.5; it was the title screen in dev.1-dev.4): the dev.4 fight, the
+    /// training room, the character viewer, the input test and the settings. Reached from
+    /// Options → Developer; the rendered fixture drives it by these button names.
+    /// </summary>
     public class MainMenu : MonoBehaviour {
         public RectTransform Root { get; private set; }
-        public Action onInputTest, onSettings, onViewer, onTraining, onFight;
+        public Action onInputTest, onSettings, onViewer, onTraining, onFight, onBack;
 
         public void Build(RectTransform parent) {
             Root = UIKit.Panel(parent, "MainMenu", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
@@ -14,7 +18,10 @@ namespace IK.UI {
             UIKit.Text(Root, "title", new Vector2(0.5f, 1f), new Vector2(0, -110), new Vector2(900, 90),
                        Loc.T("app.title"), 64, TextAnchor.MiddleCenter, Skin.Accent);
             UIKit.Text(Root, "subtitle", new Vector2(0.5f, 1f), new Vector2(0, -180), new Vector2(900, 44),
-                       "dev.4 — " + Loc.T("menu.fight"), 24, TextAnchor.MiddleCenter, Skin.Text);
+                       Loc.T("fe.developer") + " — dev.1 … dev.4", 24, TextAnchor.MiddleCenter, Skin.Text);
+            // dev.5: this menu is the Developer submenu (Options → Developer); Back = title
+            UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(110, -44), new Vector2(180, 64),
+                         Loc.T("common.back"), () => onBack?.Invoke(), 26);
 
             // dev.4: the fight is the first entry; the training room stays below it
             UIKit.Button(Root, "Fight", new Vector2(0.5f, 0.5f), new Vector2(0, 196), new Vector2(420, 90),
