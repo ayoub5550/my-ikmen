@@ -15,6 +15,8 @@ namespace IK.App {
         public static readonly string[] FightTracks = { "fight1", "fight2", "fight3" };
         AudioSource src;
         public string Playing { get; private set; } = "";
+        /// <summary>The track that is playing or about to play once the fade-out ends.</summary>
+        public string Current => pending ?? Playing;
         float fade = 1f;
         string pending;
         bool pendingLoop;

@@ -317,7 +317,7 @@ namespace IK.App {
                     return Results != null && (Results.Mode == ResultsScreen.Kind.Win || Results.Mode == ResultsScreen.Kind.TimeAttack) ? "winner" : "";
                 case Screen_.Fight: return MusicPlayer.ForStage(Flow.Current != null ? Flow.Current.StageDef : "kfm.def");
                 case Screen_.Training: return "fight1";
-                case Screen_.Settings: case Screen_.Layout: case Screen_.Main: return Music != null ? Music.Playing : "";
+                case Screen_.Settings: case Screen_.Layout: case Screen_.Main: return Music != null ? Music.Current : "";
                 default: return "";
             }
         }

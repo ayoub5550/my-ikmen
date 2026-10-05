@@ -331,7 +331,7 @@ namespace IK.EditorTools {
                     CaptureFrame(Dir + "fight-tag.png");
                     var line = app.Fight.Root.Find("teamLine");
                     Check(line != null && line.GetComponent<Text>().text.Length > 0, "The team line shows who is left");
-                    Check(app.Music != null && app.Music.Playing.StartsWith("fight"), "A fight track plays (" + (app.Music != null ? app.Music.Playing : "") + ")");
+                    Check(app.Music != null && app.Music.Current.StartsWith("fight"), "A fight track plays (" + (app.Music != null ? app.Music.Current : "") + ")");
                     // play it out CPU vs CPU with short rounds: the match must end by itself
                     app.Fight.Setup.Players[0].AiLevel = 0;
                     e6.TimerCount = 5;
