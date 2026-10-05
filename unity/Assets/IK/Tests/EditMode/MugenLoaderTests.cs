@@ -294,7 +294,7 @@ namespace IK.Tests {
         [Test]
         public void The_shipped_character_in_resources_matches_the_repository_copy() {
             var resources = Path.Combine(Application.dataPath, "IK", "Resources", "chars", "kfm");
-            foreach (var name in new[] { "kfm.def", "kfm.sff", "kfm.air", "kfm.snd" }) {
+            foreach (var name in new[] { "kfm.def", "kfm.sff", "kfm.air", "kfm.snd", "kfm.cmd", "kfm.cns" }) {
                 var shipped = Path.Combine(resources, ResourcesSource.AssetName(name) + ".bytes");
                 Assert.IsTrue(File.Exists(shipped), "missing shipped copy " + shipped);
                 Assert.AreEqual(Sha1(File.ReadAllBytes(Path.Combine(Chars, name))),

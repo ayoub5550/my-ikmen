@@ -101,6 +101,14 @@ namespace IK.UI {
             { "viewer.hint",               new[] { "تصفّح حركات الشخصية", "Browse the character's actions" } },
             { "viewer.stats",              new[] { "{0} سبرايت · {1} لوحة ألوان · {2} حركة · {3} صوت · حُمّلت في {4} مل.ث", "{0} sprites · {1} palettes · {2} actions · {3} sounds · loaded in {4} ms" } },
             { "viewer.info",               new[] { "حركة {0} · عنصر {1}/{2} · سبرايت {3} · زمن {4} · Clsn1 {5} · Clsn2 {6}", "Action {0} · element {1}/{2} · sprite {3} · time {4} · Clsn1 {5} · Clsn2 {6}" } },
+            { "menu.training",             new[] { "التدريب", "Training" } },
+            { "training.title",            new[] { "{0} · {1} حالة · {2} أمر — محرّك C# يعمل بـ 60 نبضة/ث", "{0} · {1} states · {2} commands — C# engine at 60 ticks/s" } },
+            { "training.hint",             new[] { "العب بالأزرار: الاتجاهات للحركة · x y للكمات · a b للركلات · حركة ربع دائرة + x = كف الكونغ فو", "Play with the on-screen controls: directions move · x y punch · a b kick · quarter-circle + x = Kung Fu Palm" } },
+            { "training.reset",            new[] { "إعادة", "Reset" } },
+            { "training.hud",              new[] { "المؤشرات", "HUD" } },
+            { "training.failed",           new[] { "تعذّر تشغيل المحرّك", "Engine start failed" } },
+            { "training.state",            new[] { "حالة {0} · زمن {1} · حركة {2} · عنصر {3}/{4} · تحكّم {5}", "state {0} · time {1} · anim {2} · elem {3}/{4} · ctrl {5}" } },
+            { "training.vel",              new[] { "سرعة {0:0.00},{1:0.00} · موضع {2:0.0},{3:0.0} · قوة {4} · ضربات {5} · أمر {6}", "vel {0:0.00},{1:0.00} · pos {2:0.0},{3:0.0} · power {4} · hits {5} · cmd {6}" } },
             { "about.credits",             new[] { "شكر وتقدير", "Credits" } },
         };
 

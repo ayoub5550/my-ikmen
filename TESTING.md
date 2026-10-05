@@ -32,8 +32,15 @@ grep "Exiting batchmode successfully" "$PROJECT/Builds/validation/compile.log"
   -testResults "$PROJECT/Builds/validation/editmode.xml" -logFile "$PROJECT/Builds/validation/editmode.log"
 ```
 
-Do not pass `-quit` with `-runTests`. Required cases: `docs/TOUCH_AND_SETTINGS.md` §6 (1–7)
-and, since dev.2, the loader cases in `Assets/IK/Tests/EditMode/MugenLoaderTests.cs`.
+Do not pass `-quit` with `-runTests`. Required cases: `docs/TOUCH_AND_SETTINGS.md` §6 (1–7),
+since dev.2 the loader cases in `Assets/IK/Tests/EditMode/MugenLoaderTests.cs`, and since
+dev.3 the engine cases in `Assets/IK/Tests/EditMode/FightEngineTests.cs` (expressions,
+commands, states, the KFM state machine and a 20 000-tick random-input soak). Current
+total: **110 cases**.
+
+Engine expectations are taken from the character's own files or from the Go reference
+(`engine/ikemen-go/src/*.go`, `engine/ikemen-go/data/common1.cns.zss`). If one fails, read
+the source data first; never relax the expectation.
 
 ### Regenerating the loader fixtures (only when a format changes)
 
@@ -62,7 +69,11 @@ IK_UI_FIXTURE=1 LP_NUM_THREADS=17 timeout -k 10 300 xvfb-run -a -s "-screen 0 12
 
 No `-quit` (the runner exits itself with code 0 = pass). Use `-force-glcore`, never
 `-nographics`. Repeat at 2400×1080 (`-screen 0 2400x1080x24`) and 1024×768.
-Required cases: §6 (8–11). Output: JSON report + PNGs in `Builds/validation/`.
+Required cases: §6 (8–11) plus, since dev.3, §13 — the training screen: the fighter is
+drawn, walking moves it exactly `walk.fwd` per tick, the punch enters state 200 and fires
+one HitDef, the jump lands on y = 0, a quarter circle through *input frames* reaches state
+1000, Clsn boxes are drawn and the HUD text really renders. Current total: **97 checks**.
+Output: JSON report + PNGs in `Builds/validation/` (`IK_UI_DIR` picks the folder).
 
 ## 4. Firebase Test Lab (virtual only)
 
