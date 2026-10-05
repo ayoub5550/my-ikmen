@@ -28,6 +28,10 @@ namespace IK.UI {
         public CmdFile Commands { get; private set; }
         public StageDefinition Stage { get; private set; }
         public FightDef Fight { get; private set; }
+        /// <summary>`fight.sff`, the screenpack's HUD artwork.</summary>
+        public SffFile FightSprites { get; private set; }
+        /// <summary>The HUD drawn from `fight.def`; null when the motif could not be built.</summary>
+        public FightHud Hud => hud;
         public FightEngine Engine { get; private set; }
         public string LoadError { get; private set; }
         public double LoadMilliseconds { get; private set; }
@@ -42,13 +46,15 @@ namespace IK.UI {
         RectTransform stageRect, clsnLayer, bgBack, bgFront;
         Image floorLine;
         StageRenderer stageRenderer;
+        FightHud hud;
+        readonly List<Graphic> fallbackHud = new List<Graphic>();
         readonly Image[] fighterSprites = new Image[2];
         readonly List<Image> clsnPool = new List<Image>();
         readonly Image[] lifeFill = new Image[2];
         readonly Image[] lifeMid = new Image[2];
         readonly Image[] powerFill = new Image[2];
         readonly Text[] winLabels = new Text[2];
-        Text announce, hud, timer;
+        Text announce, debugLine, timer;
         bool showBoxes;
 
         /// <summary>Pixels per stage unit, derived from the stage's localcoord and the screen.</summary>
@@ -107,6 +113,7 @@ namespace IK.UI {
                 }
                 lifeMid[i] = midGo;
                 lifeFill[i] = fillGo;
+                fallbackHud.Add(back); fallbackHud.Add(midGo); fallbackHud.Add(fillGo);
 
                 var pback = UIKit.Image(Root, "powerBack" + i, anchor,
                                         new Vector2(left ? x + 160f : x - 160f, -74f), new Vector2(320, 14), null, new Color(0f, 0f, 0f, 0.5f));
@@ -119,18 +126,20 @@ namespace IK.UI {
                 prt.offsetMin = new Vector2(left ? 2f : -318f, 2f);
                 prt.offsetMax = new Vector2(left ? 318f : -2f, -2f);
                 powerFill[i] = pfill;
+                fallbackHud.Add(pback); fallbackHud.Add(pfill);
 
-                winLabels[i] = UIKit.Text(Root, "wins" + i, anchor,
+                fallbackHud.Add(winLabels[i] = UIKit.Text(Root, "wins" + i, anchor,
                                           new Vector2(left ? x + 20f : x - 20f, -100f), new Vector2(160, 26),
                                           "", 20, left ? TextAnchor.MiddleLeft : TextAnchor.MiddleRight,
-                                          new Color(1f, 1f, 1f, 0.7f));
+                                          new Color(1f, 1f, 1f, 0.7f)));
             }
 
             timer = UIKit.Text(Root, "timer", new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(160, 48),
                                "", 34, TextAnchor.MiddleCenter, Skin.Text);
             announce = UIKit.Text(Root, "announce", new Vector2(0.5f, 0.5f), new Vector2(0, 60), new Vector2(900, 70),
                                   "", 46, TextAnchor.MiddleCenter, Skin.Accent);
-            hud = UIKit.Text(Root, "hud", new Vector2(0f, 0f), new Vector2(330, 40), new Vector2(900, 26),
+            fallbackHud.Add(timer); fallbackHud.Add(announce);
+            debugLine = UIKit.Text(Root, "hud", new Vector2(0f, 0f), new Vector2(330, 40), new Vector2(900, 26),
                              "", 18, TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.55f));
 
             UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(90, -140), new Vector2(150, 54),
@@ -183,6 +192,29 @@ namespace IK.UI {
 
                 if (Stage != null && Stage.Sprites != null && bgBack != null)
                     stageRenderer = new StageRenderer(bgBack, bgFront, Stage, cache);
+
+                // the screenpack's own HUD artwork from fight.sff; the motif is in its own
+                // localcoord space (1280x720 for this one), hence scale 1 against UIKit's
+                // 1280x720 reference canvas
+                if (Fight != null) {
+                    try {
+                        var sffBytes = Fight.ReadSffBytes();
+                        if (sffBytes != null) {
+                            FightSprites = SffFile.Load(sffBytes, false);
+                            hud = new FightHud(Root, Fight, FightSprites, cache, 1f);
+                            if (!hud.Ready) {
+                                UnityEngine.Debug.LogWarning("[IK] fight HUD not ready: " + hud.LoadError);
+                                hud.Dispose();
+                                hud = null;
+                            }
+                        }
+                    } catch (Exception e) {
+                        UnityEngine.Debug.LogWarning("[IK] fight HUD failed: " + e.Message);
+                        hud = null;
+                    }
+                }
+                // the programmer-art bars are only a fallback for a motif that fails to load
+                foreach (var g in fallbackHud) if (g != null) g.enabled = hud == null;
 
                 var p1 = new Fighter(Character, States, Commands);
                 var p2 = new Fighter(Character, States, Commands);
@@ -302,11 +334,14 @@ namespace IK.UI {
             }
 
             DrawBoxes(camera);
+            if (hud != null) hud.Draw(Engine);
             DrawBars();
             DrawAnnouncement();
         }
 
         void DrawBars() {
+            // when the real HUD is up these widgets are disabled; the values are still kept
+            // up to date so the debug line and the fallback stay correct
             for (int i = 0; i < 2; i++) {
                 var bar = Engine.Bars[i];
                 var f = Engine.Players[i];
@@ -323,8 +358,8 @@ namespace IK.UI {
             }
             if (timer != null)
                 UIKit.SetText(timer, Engine.TimeLeft >= 0 ? Engine.TimeLeft.ToString() : "--");
-            if (hud != null)
-                UIKit.SetText(hud, string.Format(
+            if (debugLine != null)
+                UIKit.SetText(debugLine, string.Format(
                     "P1 {0}/{1} st{2} | P2 {3}/{4} st{5} | round {6} ({7}) | hits {8}",
                     Engine.P1.Life, Engine.P1.LifeMax, Engine.P1.StateNo,
                     Engine.P2.Life, Engine.P2.LifeMax, Engine.P2.StateNo,
@@ -388,6 +423,7 @@ namespace IK.UI {
         public void SetVisible(bool on) {
             if (Root == null) return;
             Root.gameObject.SetActive(on);
+            if (hud != null) hud.SetVisible(on);
             if (on) {
                 // on the device everything is in Resources; the stage and fight.def are
                 // optional, the fight runs without them (plain floor, engine-drawn bars)
@@ -401,6 +437,7 @@ namespace IK.UI {
         public bool Visible => Root != null && Root.gameObject.activeSelf;
 
         void OnDestroy() {
+            if (hud != null) hud.Dispose();
             if (stageRenderer != null) stageRenderer.Dispose();
             if (cache != null) cache.Dispose();
         }

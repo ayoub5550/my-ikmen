@@ -45,6 +45,8 @@ namespace IK.Core {
         public int RoundWinner;
         public bool MatchOver;
         public int Tick_ = 0;
+        /// <summary>Ticks since this round started (Go's `sys.intro` clock for the HUD).</summary>
+        public int RoundTick { get; private set; }
 
         /// <summary>Ticks the announcement phase lasts (`fight.def` round.default.displaytime).</summary>
         public int AnnounceTime = 60;
@@ -89,6 +91,7 @@ namespace IK.Core {
 
         public void StartRound(int no) {
             RoundNo = no;
+            RoundTick = 0;
             State = RoundState.Announce;
             StateTime = 0;
             RoundWinner = 0;
@@ -134,6 +137,7 @@ namespace IK.Core {
         /// <summary>One frame of the fight. Inputs are already facing-relative per player.</summary>
         public void Tick(CmdKey p1Input, CmdKey p2Input) {
             Tick_++;
+            RoundTick++;
             HitsThisTick.Clear();
             for (int i = 0; i < 2; i++) Players[i]?.BeginTick();
 

@@ -408,6 +408,10 @@ namespace IK.EditorTools {
                     Check(fight.Stage.ZOffset == 200, "kfm stage zoffset = " + fight.Stage.ZOffset);
                 }
 
+                Check(fight.FightSprites != null && fight.Hud != null && fight.Hud.Ready,
+                      "The screenpack HUD is built from fight.sff" +
+                      (fight.Hud != null && fight.Hud.LoadError != null ? ": " + fight.Hud.LoadError : ""));
+
                 Canvas.ForceUpdateCanvases();
                 yield return null;
                 CaptureFrame(Dir + "fight-start.png");
