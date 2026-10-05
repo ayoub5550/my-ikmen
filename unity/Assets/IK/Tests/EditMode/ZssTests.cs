@@ -36,12 +36,48 @@ persistent(0) if 1 { velAdd{x: 1} }   # comment
             Assert.AreEqual("S", s.Get("type"));
             Assert.AreEqual("200", s.Get("anim"));
             int lets = 0, varsets = 0;
-            foreach (var c in s.Controllers) { if (c.Type == ZssFile.LetType) lets++; if (c.Type == "varset") varsets++; }
+            int hoisted = 0;
+            foreach (var c in s.Controllers) {
+                if (c.Type == ZssFile.LetType) { if (c.Name.StartsWith("if ")) hoisted++; else lets++; }
+                if (c.Type == "varset") varsets++;
+            }
             Assert.AreEqual(2, lets, "the function's let and the caller's let");
             Assert.AreEqual(3, varsets);
+            // dev.8: each `if` / `else if` condition is evaluated once into a hidden local
+            Assert.AreEqual(3, hoisted, "if, else if, persistent(0) if");
+            foreach (var c in s.Controllers)
+                if (c.Type == "varset") StringAssert.Contains("zss__zif", c.TriggerAll[0].Source, "the branches read the hoisted condition");
             var last = s.Controllers[s.Controllers.Count - 1];
             Assert.AreEqual("veladd", last.Type);
             Assert.AreEqual(0, last.Persistent);
+        }
+
+        [Test]
+        public void Compiler_EvaluatesIfConditionOnce_RandomDoesNotSplitBranches() {
+            // dev.8 "stuck player": kfm_zss's AI sets `let spver` in an if / else-if / else chain
+            // that tests `random`, then changes state to $spver. Re-rolling `random` per controller
+            // could skip every branch and send the fighter to state 0 without control.
+            var z = ZssFile.Parse(@"
+[StateDef 901; type: S; movetype: I; anim: 0; ctrl: 0;]
+if random % 2 = 0 {
+    let v = 10;
+} else if random % 2 = 1 {
+    let v = 20;
+} else {
+    let v = 30;
+}
+varSet{var(5): $v}
+");
+            var s = z.Get(901);
+            Assert.IsNotNull(s);
+            // the branch lets read the hoisted conditions only, so exactly one branch can fire
+            int lets = 0;
+            foreach (var c in s.Controllers) if (c.Type == ZssFile.LetType && c.Name.StartsWith("let ")) {
+                lets++;
+                StringAssert.Contains("zss__zif", c.TriggerAll[0].Source);
+                StringAssert.DoesNotContain("random", c.TriggerAll[0].Source, "branches never re-roll random");
+            }
+            Assert.AreEqual(3, lets);
         }
 
         static Fighter Load(string name, string def) {

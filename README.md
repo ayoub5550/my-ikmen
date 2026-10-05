@@ -6,9 +6,9 @@ An Android fighting game built with **Unity**, based on the open-source **Ikemen
 
 ## الحالة / Status
 
-آخر مرحلة: **dev.6** — حلقات ZSS و`ignorehitpause`، إصلاح التفات الشخصيات، أنماط الفرق Turns و Tag (2-4 أعضاء)، Team Arcade و Team Versus و Time Attack، وموسيقى خلفية أصلية مولّدة بالكود. التفاصيل والنواقص في `docs/DEV6.md` (والمرحلة السابقة في `docs/DEV5.md`).
+آخر مرحلة: **dev.7** — الأداء: إصلاح تسريب صور الخلفية وتسريب صور الحلبات، تقليل نفايات الذاكرة في المحرك بثلاثين ضعفاً، تجهيز السبرايتات مسبقاً، انتظام الإطارات، اختبار أداء وعداد إطارات داخل اللعبة، إعدادات الدقة والتنعيم تعمل، وشكل جديد لأزرار اللمس مع إصلاح اختفائها أثناء القتال. التفاصيل في `docs/DEV7.md` (والمرحلة السابقة في `docs/DEV6.md`).
 
-Latest milestone: **dev.6** — ZSS loops, ignorehitpause, Turns/Tag teams, Team Arcade/Versus, Time Attack, original music. See `docs/DEV6.md` (and `docs/DEV5.md`).
+Latest milestone: **dev.7** — performance (texture leaks fixed, 30x less engine garbage, sprite prewarm, frame pacing), in-game benchmark + FPS overlay, working render scale / filters, modern touch buttons now drawn above the fight. See `docs/DEV7.md` (and `docs/DEV6.md`).
 
 ## محتوى المستودع / Layout
 

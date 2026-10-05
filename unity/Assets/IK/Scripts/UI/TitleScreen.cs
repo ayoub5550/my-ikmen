@@ -84,6 +84,9 @@ namespace IK.UI {
                 if (!on) { it.Label.Hide(); continue; }
                 float y = t.MenuPos[1] + (i - top) * spacing;
                 var font = i == Cursor ? t.ActiveFont : t.ItemFont;
+                // dev.8: Arabic labels (TrueType, Amiri) are taller than the bitmap font: cap the
+                // text height to the item spacing so the lines no longer overlap
+                it.Label.MaxTtfHeight = Loc.Arabic ? spacing * 0.66f : 0f;
                 it.Label.Set(font, t.MenuPos[0], y, LabelOf(it), null, Loc.Arabic);
                 // the tap target covers the label row (text baseline at y, right-aligned)
                 var rt = (RectTransform)it.Hit.transform;
@@ -91,9 +94,9 @@ namespace IK.UI {
                 rt.sizeDelta = new Vector2(480f, spacing);
             }
             var small = FightText.Read(null, "", "", 2, 1);
-            footerLeft.Set(small, 6f, View.Height - 1f, "my-ikmen dev.6 · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
+            footerLeft.Set(small, 6f, View.Height - 1f, "my-ikmen · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
             var right = FightText.Read(null, "", "", 2, -1);
-            footerRight.Set(right, View.Width - 6f, View.Height - 1f, "v0.1.0-dev.6", new Color(0.75f, 0.75f, 0.75f), true);
+            footerRight.Set(right, View.Width - 6f, View.Height - 1f, "v" + Application.version, new Color(0.75f, 0.75f, 0.75f), true);
         }
 
         protected override void OnShow() {

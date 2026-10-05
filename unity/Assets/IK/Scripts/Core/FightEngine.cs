@@ -147,6 +147,8 @@ namespace IK.Core {
         // ---- main loop ----------------------------------------------------------
 
         /// <summary>One frame of the fight. Inputs are already facing-relative per player.</summary>
+        readonly List<Fighter> tickSnapshot = new List<Fighter>(), hitSnapshot = new List<Fighter>();
+
         public void Tick(CmdKey p1Input, CmdKey p2Input) {
             Tick_++;
             RoundTick++;
@@ -155,7 +157,8 @@ namespace IK.Core {
             StopChannels.Clear();
             if (Vibrate > 0) Vibrate--;
             bool paused = Paused;
-            var snapshot = new List<Fighter>(Chars);
+            var snapshot = tickSnapshot;              // dev.7: reused, no per-tick list
+            snapshot.Clear(); snapshot.AddRange(Chars);
             foreach (var c in snapshot) c.BeginTick();
 
             // 1. input: only while the players have control of the round
@@ -187,7 +190,8 @@ namespace IK.Core {
             // 5. projectiles and explods move, then hit detection
             TickProjectiles(paused);
             if (!paused && (State == RoundState.Fighting || State == RoundState.Over)) {
-                var all = new List<Fighter>(Chars);
+                var all = hitSnapshot;
+                all.Clear(); all.AddRange(Chars);
                 foreach (var a in all) {
                     if (a.Destroyed || !a.HitDefActive) continue;
                     foreach (var b in all) {

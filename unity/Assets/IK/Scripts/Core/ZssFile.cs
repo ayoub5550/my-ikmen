@@ -164,10 +164,18 @@ namespace IK.Core {
                         string c = Locals(text.Substring(i, open - i).Trim());
                         int close = Match(text, open, '{', '}');
                         string inner = text.Substring(open + 1, Math.Max(0, close - open - 1));
-                        string full = c;
-                        if (isElse && elseCond != null) full = elseCond + " && (" + c + ")";
+                        // dev.8: the condition is evaluated ONCE, where the `if` stands (as Ikemen's
+                        // compiled blocks do), into a hidden local; the body and the else chain read
+                        // that local. Before, every controller of the body and of the else branches
+                        // re-evaluated the text: `random` rolled again per controller, so in
+                        // kfm_zss's AI `let spver = …` could all be skipped while the following
+                        // `changeState{value: $spver}` still fired → state 0 without control (the
+                        // "stuck player").
+                        string reach = isElse && elseCond != null ? And(cond, elseCond) : cond;
+                        string hv = Hoist(c, reach);
+                        string full = isElse && elseCond != null ? elseCond + " && " + hv : hv;
                         Block(inner, And(cond, full), persist, ihp, level + 1);
-                        elseCond = isElse && elseCond != null ? elseCond + " && !(" + c + ")" : "!(" + c + ")";
+                        elseCond = isElse && elseCond != null ? elseCond + " && !" + hv : "!" + hv;
                         i = close + 1;
                         continue;
                     }
@@ -298,6 +306,15 @@ namespace IK.Core {
                     else if (d == 0 && (Word(body, k, "case") || Word(body, k, "default"))) labels.Add(k);
                 }
                 string prev = null, defaultBody = null;
+                // dev.8: the switch value is evaluated once (see the `if` hoisting)
+                if (labels.Count > 0) {
+                    string hn = "zsw" + (++hoistCount);
+                    var hc = new StateController { Type = LetType, Name = "switch " + hn };
+                    hc.Params["name"] = hn;
+                    hc.Params["value"] = head;
+                    Finish(hc, cond, -1, 1);
+                    head = "zss__" + hn;
+                }
                 for (int n = 0; n < labels.Count; n++) {
                     int at = labels[n];
                     int stop = n + 1 < labels.Count ? labels[n + 1] : body.Length;
@@ -345,6 +362,20 @@ namespace IK.Core {
                 Block(body, cond, persist, ihp, level + 1);
                 depth--;
                 return f.Rets.Count > 0 ? prefix + f.Rets[0] : null;
+            }
+
+            int hoistCount;
+
+            /// <summary>dev.8: a hidden local holding <paramref name="expr"/>, evaluated where it
+            /// stands (always, also during hit pause) when <paramref name="cond"/> holds; returns the
+            /// trigger name that reads it.</summary>
+            string Hoist(string expr, string cond) {
+                string name = "zif" + (++hoistCount);
+                var c = new StateController { Type = LetType, Name = "if " + name };
+                c.Params["name"] = name;
+                c.Params["value"] = "(" + expr + ") != 0";
+                Finish(c, cond, -1, 1);
+                return "zss__" + name;
             }
 
             void AddLet(string name, string value, string cond, int persist, int ihp) {

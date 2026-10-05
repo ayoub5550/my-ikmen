@@ -406,16 +406,24 @@ namespace IK.Core {
 
         /// <summary>Everything to draw this frame, back to front: helpers/players by
         /// `sprpriority`, explods and projectiles mixed in by their own priority.</summary>
-        public List<object> DrawList() {
-            var list = new List<KeyValuePair<int, object>>();
+        public List<object> DrawList() => DrawList(new List<object>());
+
+        readonly List<KeyValuePair<int, object>> drawScratch = new List<KeyValuePair<int, object>>();
+        static readonly Comparison<KeyValuePair<int, object>> byDrawKey = (x, y) => x.Key.CompareTo(y.Key);
+
+        /// <summary>dev.7: allocation-free draw order into a caller-owned list (same order as before).</summary>
+        public List<object> DrawList(List<object> result) {
+            var list = drawScratch;
+            list.Clear();
+            result.Clear();
             int order = 0;
-            foreach (var e in Explods) if (!e.Removed && !e.OnTop) list.Add(new KeyValuePair<int, object>(e.SprPriority * 4096 + order++, e));
-            foreach (var c in Chars) if (!c.Destroyed) list.Add(new KeyValuePair<int, object>(c.SprPriority * 4096 + order++ + (c.Move == MoveType.Attack ? 2048 : 0), c));
-            foreach (var p in Projectiles) if (!p.Dead) list.Add(new KeyValuePair<int, object>(p.SprPriority * 4096 + order++, p));
-            list.Sort((x, y) => x.Key.CompareTo(y.Key));
-            var result = new List<object>(list.Count + Explods.Count);
-            foreach (var kv in list) result.Add(kv.Value);
-            foreach (var e in Explods) if (!e.Removed && e.OnTop) result.Add(e);
+            for (int i = 0; i < Explods.Count; i++) { var e = Explods[i]; if (!e.Removed && !e.OnTop) list.Add(new KeyValuePair<int, object>(e.SprPriority * 4096 + order++, e)); }
+            for (int i = 0; i < Chars.Count; i++) { var c = Chars[i]; if (!c.Destroyed) list.Add(new KeyValuePair<int, object>(c.SprPriority * 4096 + order++ + (c.Move == MoveType.Attack ? 2048 : 0), c)); }
+            for (int i = 0; i < Projectiles.Count; i++) { var p = Projectiles[i]; if (!p.Dead) list.Add(new KeyValuePair<int, object>(p.SprPriority * 4096 + order++, p)); }
+            list.Sort(byDrawKey);
+            for (int i = 0; i < list.Count; i++) result.Add(list[i].Value);
+            for (int i = 0; i < Explods.Count; i++) { var e = Explods[i]; if (!e.Removed && e.OnTop) result.Add(e); }
+            list.Clear();
             return result;
         }
     }

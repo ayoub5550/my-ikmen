@@ -10,12 +10,32 @@ namespace IK.Core {
         public int Width, Height;
         public short X, Y;              // MUGEN axis offset
         public int Format = -1;         // SFF v2 format byte; -1 for a v1 PCX sprite
-        public int ColorDepth = 8;
         public int PaletteIndex = -1;   // index into SffFile.Palettes
         public int Link;
-        public byte[] Pixels;           // palette indices, or RGBA/RGB bytes when Raw
-        public bool Raw;
-        public uint[] OwnPalette;       // v1 sprites and paletted PNGs carry their own palette
+
+        // dev.8: SFF v2 sprites can be decoded lazily (SffFile.Load(lazy: true)): the 9 MB
+        // motif SFF only decodes the sprites a screen draws, so the title background shows at
+        // once instead of after decoding every sprite (≈6 s on the emulator).
+        int colorDepth = 8;
+        byte[] pixels;
+        bool raw;
+        uint[] ownPalette;
+        internal Action Decode;
+        void Ensure() {
+            if (Decode == null) return;
+            lock (this) {
+                var d = Decode;
+                if (d == null) return;
+                Decode = null;
+                try { d(); } catch (Exception e) { pixels = null; SffFile.LastDecodeError = ToString() + ": " + e.Message; }
+            }
+        }
+        public int ColorDepth { get { Ensure(); return colorDepth; } set { colorDepth = value; } }
+        public byte[] Pixels { get { Ensure(); return pixels; } set { pixels = value; } }      // palette indices, or RGBA/RGB bytes when Raw
+        public bool Raw { get { Ensure(); return raw; } set { raw = value; } }
+        public uint[] OwnPalette { get { Ensure(); return ownPalette; } set { ownPalette = value; } }   // v1 sprites and paletted PNGs carry their own palette
+        /// <summary>True until a lazily loaded sprite has been decoded.</summary>
+        public bool Pending => Decode != null;
 
         public bool IsBlank => Width <= 0 || Height <= 0 || Pixels == null || Pixels.Length == 0;
         public override string ToString() => $"{Group},{Number} {Width}x{Height} fmt={Format}";
@@ -41,6 +61,9 @@ namespace IK.Core {
         public readonly Dictionary<int, int> PaletteTable = new Dictionary<int, int>();
         readonly Dictionary<int, SffSprite> byKey = new Dictionary<int, SffSprite>();
 
+        /// <summary>Last error of a lazy sprite decode (shown by the device probe).</summary>
+        public static string LastDecodeError;
+
         public static int Key(int group, int number) => (group << 16) | (number & 0xffff);
 
         public SffSprite Get(int group, int number) =>
@@ -57,7 +80,7 @@ namespace IK.Core {
         /// Reads a whole SFF. <paramref name="isCharacter"/> enables the legacy handling of a
         /// character's 0,0 sprite in SFF v1 (its palette sits at the end of the block).
         /// </summary>
-        public static SffFile Load(byte[] data, bool isCharacter = true) {
+        public static SffFile Load(byte[] data, bool isCharacter = true, bool lazy = false) {
             if (data == null || data.Length < 36) throw new InvalidDataException("SFF file too short");
             for (int i = 0; i < 11; i++)
                 if (data[i] != "ElecbyteSpr"[i]) throw new InvalidDataException("Unrecognized SFF file, invalid header");
@@ -78,7 +101,7 @@ namespace IK.Core {
                 uint lofs = r.U32(52);
                 uint tofs = r.U32(60);
                 sff.ReadPalettesV2(r, numberOfPalettes, firstPalette, lofs);
-                sff.ReadV2(r, numberOfSprites, first, lofs, tofs);
+                sff.ReadV2(r, numberOfSprites, first, lofs, tofs, lazy);
             } else {
                 throw new InvalidDataException("Unrecognized SFF version " + sff.VersionHigh);
             }
@@ -232,7 +255,7 @@ namespace IK.Core {
             return pal;
         }
 
-        void ReadV2(ByteReader r, int count, int first, uint lofs, uint tofs) {
+        void ReadV2(ByteReader r, int count, int first, uint lofs, uint tofs, bool lazy) {
             int shofs = first;
             for (int i = 0; i < count; i++) {
                 if (shofs + 28 > r.Length) break;
@@ -260,14 +283,32 @@ namespace IK.Core {
                     if (s.Link < i) {
                         var src = Sprites[s.Link];
                         s.Width = src.Width; s.Height = src.Height;
-                        s.Pixels = src.Pixels; s.Raw = src.Raw;
-                        s.ColorDepth = src.ColorDepth;
                         s.PaletteIndex = src.PaletteIndex;
-                        s.OwnPalette = src.OwnPalette;
+                        if (lazy && src.Pending) {
+                            var ls = s;
+                            s.Decode = () => {
+                                ls.Pixels = src.Pixels; ls.Raw = src.Raw; ls.ColorDepth = src.ColorDepth;
+                                ls.OwnPalette = src.OwnPalette; ls.Width = src.Width; ls.Height = src.Height;
+                            };
+                        } else {
+                            s.Pixels = src.Pixels; s.Raw = src.Raw;
+                            s.ColorDepth = src.ColorDepth;
+                            s.OwnPalette = src.OwnPalette;
+                        }
                     }
                     continue;
                 }
 
+                if (lazy) {
+                    var ls = s; uint o = dataOfs, n = dataSize;
+                    s.Decode = () => DecodeV2(r, ls, o, n);
+                } else {
+                    DecodeV2(r, s, dataOfs, dataSize);
+                }
+            }
+        }
+
+        void DecodeV2(ByteReader r, SffSprite s, uint dataOfs, uint dataSize) {
                 switch (s.Format) {
                     case 0:
                         s.Pixels = r.Slice((int)dataOfs, (int)dataSize);
@@ -302,7 +343,6 @@ namespace IK.Core {
                     default:
                         throw new InvalidDataException("Unknown sprite format " + s.Format);
                 }
-            }
         }
 
         /// <summary>Little-endian reader over a byte[] with clamped slices.</summary>

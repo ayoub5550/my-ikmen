@@ -53,8 +53,32 @@ namespace IK.App {
 
         Screen_ settingsReturn = Screen_.Title;
 
+        /// <summary>
+        /// dev.8: the owner's own characters / stages: `files/chars/<name>/`, `files/stages/*.def`,
+        /// optional `files/data/select.def` (Android/data/com.ayoub.ikmen/files on the phone).
+        /// Not in the editor, so tests only see the APK content.
+        /// </summary>
+        static void SetupOwnContent() {
+            if (Application.isEditor) return;
+            var root = Application.persistentDataPath;
+            IK.Core.ContentSource.ExternalRoot = root;
+            try {
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "chars"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "stages"));
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(root, "data"));
+                var readme = System.IO.Path.Combine(root, "README-content.txt");
+                if (!System.IO.File.Exists(readme))
+                    System.IO.File.WriteAllText(readme,
+                        "ضع الشخصيات في chars/<الاسم>/ والمراحل في stages/ (ملفات .def) ثم أعد تشغيل اللعبة.\n" +
+                        "يمكنك وضع select.def الخاص بك في data/ ليحل محل القائمة المدمجة.\n\n" +
+                        "Put characters in chars/<name>/ and stages in stages/ (.def files), then restart the game.\n" +
+                        "An own data/select.def replaces the built-in roster.\n");
+            } catch (System.Exception e) { Debug.LogWarning("[IK] content folders: " + e.Message); }
+        }
+
         void Awake() {
             Instance = this;
+            SetupOwnContent();
             var s = SettingsStore.Current;
             Loc.Apply(s.language);
             Application.targetFrameRate = s.fpsCap;
@@ -63,7 +87,9 @@ namespace IK.App {
             UnityEngine.Screen.sleepTimeout = SleepTimeout.NeverSleep;
             AudioListener.volume = s.masterVolume / 100f;
 
-            TouchCanvas = UIKit.CreateCanvas("TouchCanvas", 5);
+            // dev.7: the controls sit ABOVE the screens. Before, the opaque fight / training panels of
+            // the UI canvas (order 10) covered them: they still worked but were invisible in a match.
+            TouchCanvas = UIKit.CreateCanvas("TouchCanvas", 20);
             UiCanvas = UIKit.CreateCanvas("UICanvas", 10);
             DontDestroyOnLoad(gameObject);
 
@@ -75,6 +101,8 @@ namespace IK.App {
             Gamepad = gameObject.AddComponent<GamepadInput>();
             Router = gameObject.AddComponent<InputRouter>();
             Music = gameObject.AddComponent<MusicPlayer>();
+            gameObject.AddComponent<PerfMonitor>();
+            RenderQuality.Apply(s);
             Router.touch = Touch;
             Router.gamepad = Gamepad;
             Router.Configure(s);
@@ -177,6 +205,34 @@ namespace IK.App {
             }
         }
 
+        // ------------------------------------------------------------------ dev.7 benchmark
+
+        Screen_ benchReturn = Screen_.Settings;
+
+        /// <summary>Options → Video → Benchmark.</summary>
+        public void RunBenchmark() {
+            if (Benchmark.Running) return;
+            benchReturn = Current;
+            Benchmark.Run(this);
+        }
+
+        /// <summary>Shows the fight screen with a match that is not part of a game flow.</summary>
+        public void ShowFightForBenchmark(MatchSetup setup, System.Action<MatchResult> onEnd) {
+            InFlowMatch = false;
+            Fight.StartMatch(setup, onEnd);
+            Show(Screen_.Fight);
+        }
+
+        public void EndBenchmark() {
+            Fight.ClearMatch();
+            Show(benchReturn == Screen_.Fight ? Screen_.Title : benchReturn);
+        }
+
+        public void OpenSettingsPage(string page) {
+            if (Current != Screen_.Settings) OpenSettings(Screen_.Title);
+            Settings.ShowPage(page);
+        }
+
         void OpenSettings(Screen_ back) {
             settingsReturn = back;
             Show(Screen_.Settings);
@@ -272,7 +328,7 @@ namespace IK.App {
         public void RebuildTouch() {
             var s = SettingsStore.Current;
             Loc.Apply(s.language);
-            Application.targetFrameRate = s.fpsCap;
+            RenderQuality.Apply(s);
             AudioListener.volume = s.masterVolume / 100f;
             Touch.Build((RectTransform)TouchCanvas.transform, s);
             Router.Configure(s);
@@ -325,7 +381,7 @@ namespace IK.App {
         void OnTick(InputFrame frame) {
             if (Current == Screen_.InputTest) Display.Feed(frame, Router.TickCount);
             else if (Current == Screen_.Training) Training.Feed(frame);
-            else if (Current == Screen_.Fight) Fight.Feed(frame);
+            else if (Current == Screen_.Fight) { if (!Fight.ExternalDrive) Fight.Feed(frame); }
             else {
                 var fe = FrontEnd(Current);
                 if (fe != null) fe.Feed(frame);
@@ -334,7 +390,7 @@ namespace IK.App {
 
         void Update() {
             // Android back button: Back in menus, pause in a match.
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape)) Back();
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) && !DeviceProbe.Active) Back();
             if ((Current == Screen_.InputTest || Current == Screen_.Training) && Touch != null && !Touch.Visible &&
                 SettingsStore.Current.onScreenControls != OnScreenControls.Never &&
                 Router.LastDevice == InputDevice.Touch)

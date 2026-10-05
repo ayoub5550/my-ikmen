@@ -13,6 +13,10 @@ namespace IK.Input {
     /// </summary>
     public class DirectionPad : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IDragHandler {
         public DirectionMode mode = DirectionMode.DPad;
+        /// <summary>dev.7: 0 modern (glass disc, arrows that light up), 1 classic cross.</summary>
+        public int style;
+        readonly Image[] arrows = new Image[4];     // up, right, down, left
+        float baseOpacity = 1f;
         public float deadZone = 0.25f;
         public System.Action<int> onSectorChanged;     // -1 = neutral, else sector index
 
@@ -42,7 +46,9 @@ namespace IK.Input {
 
             // Left 45 % of the safe area is the direction zone (modes 1/2 only use it as origin).
             zone.anchorMin = new Vector2(0, 0);
-            zone.anchorMax = new Vector2(0.45f, 1f);
+            // dev.7: the top 22 % stays free for the HUD / menu buttons now that the controls are
+            // drawn above the screens (a thumb never steers from up there)
+            zone.anchorMax = new Vector2(0.45f, 0.78f);
             zone.offsetMin = Vector2.zero;
             zone.offsetMax = Vector2.zero;
 
@@ -51,17 +57,69 @@ namespace IK.Input {
             baseRt = UI.UIKit.Rect(zone, "DirBase", new Vector2(0, 0), centre - new Vector2(safeRef.xMin, safeRef.yMin), new Vector2(size, size));
             baseImg = baseRt.gameObject.AddComponent<Image>();
             baseImg.raycastTarget = false;
-            baseImg.color = new Color(1, 1, 1, opacity * placement.opacity);
-            baseImg.sprite = mode == DirectionMode.DPad ? CrossSprite() : UI.Skin.Ring();
             baseImg.preserveAspect = true;
+            baseOpacity = Mathf.Clamp01(opacity * placement.opacity);
+            for (int i = 0; i < 4; i++) arrows[i] = null;
+            if (style == 0) {
+                baseImg.sprite = UI.Skin.Disc;
+                baseImg.color = new Color(UI.Skin.Face.r, UI.Skin.Face.g, UI.Skin.Face.b, 0.5f * baseOpacity);
+                var ring = Child(baseRt, "ring", UI.Skin.RingOf(0.03f), size, Vector2.zero);
+                ring.color = new Color(1f, 1f, 1f, 0.38f * baseOpacity + 0.1f);
+                var inner = Child(baseRt, "inner", UI.Skin.RingOf(0.05f), size * 0.5f, Vector2.zero);
+                inner.color = new Color(1f, 1f, 1f, 0.12f * baseOpacity);
+                for (int i = 0; i < 4; i++) {
+                    float ang = -90f * i;                       // up, right, down, left
+                    var dir = Quaternion.Euler(0, 0, ang) * Vector3.up;
+                    var a = Child(baseRt, "arrow" + i, UI.Skin.Arrow, size * 0.17f, (Vector2)dir * size * 0.36f);
+                    a.rectTransform.localRotation = Quaternion.Euler(0, 0, ang);
+                    arrows[i] = a;
+                }
+                UpdateArrows();
+            } else {
+                baseImg.color = new Color(1, 1, 1, opacity * placement.opacity);
+                baseImg.sprite = mode == DirectionMode.DPad ? CrossSprite() : UI.Skin.Ring();
+            }
 
-            knobRt = UI.UIKit.Rect(baseRt, "DirKnob", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(size * 0.42f, size * 0.42f));
+            float knobSize = size * (style == 0 ? 0.40f : 0.42f);
+            knobRt = UI.UIKit.Rect(baseRt, "DirKnob", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(knobSize, knobSize));
             knobImg = knobRt.gameObject.AddComponent<Image>();
-            knobImg.sprite = UI.Skin.Round;
             knobImg.raycastTarget = false;
-            knobImg.color = new Color(1, 1, 1, Mathf.Min(1f, opacity * placement.opacity + 0.15f));
+            knobImg.preserveAspect = true;
+            if (style == 0) {
+                knobImg.sprite = UI.Skin.Disc;
+                knobImg.color = new Color(0.85f, 0.88f, 0.95f, 0.30f + 0.25f * baseOpacity);
+                var kr = Child(knobRt, "ring", UI.Skin.RingOf(0.1f), knobSize, Vector2.zero);
+                kr.color = new Color(1f, 1f, 1f, 0.9f);
+                var ks = Child(knobRt, "sheen", UI.Skin.Sheen, knobSize, Vector2.zero);
+                ks.color = new Color(1f, 1f, 1f, 0.35f);
+            } else {
+                knobImg.sprite = UI.Skin.Round;
+                knobImg.color = new Color(1, 1, 1, Mathf.Min(1f, opacity * placement.opacity + 0.15f));
+            }
             knobRt.gameObject.SetActive(mode != DirectionMode.FloatingStick);
             if (mode == DirectionMode.FloatingStick) baseRt.gameObject.SetActive(false);
+        }
+
+        static Image Child(RectTransform parent, string name, Sprite sprite, float size, Vector2 pos) {
+            var rt = UI.UIKit.Rect(parent, name, new Vector2(0.5f, 0.5f), pos, new Vector2(size, size));
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = sprite;
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            return img;
+        }
+
+        /// <summary>Lights the arrows of the held direction (modern style).</summary>
+        void UpdateArrows() {
+            for (int i = 0; i < 4; i++) {
+                var a = arrows[i];
+                if (a == null) continue;
+                bool lit = i == 0 ? U : i == 1 ? R : i == 2 ? D : L;
+                var c = lit ? UI.Skin.LP : new Color(1f, 1f, 1f, 0.55f * baseOpacity + 0.15f);
+                if (a.color != c) a.color = c;
+                var sc = lit ? new Vector3(1.25f, 1.25f, 1f) : Vector3.one;
+                if (a.rectTransform.localScale != sc) a.rectTransform.localScale = sc;
+            }
         }
 
         public void OnPointerDown(PointerEventData e) {
@@ -99,6 +157,16 @@ namespace IK.Input {
                 onSectorChanged?.Invoke(sector);
             }
             if (knobRt != null) knobRt.anchoredPosition = Analog * radius * 0.6f;
+            UpdateArrows();
+        }
+
+        /// <summary>Tests / screenshots: shows and outputs a direction as if a thumb held it.</summary>
+        public void Simulate(Vector2 analog) {
+            if (analog.sqrMagnitude < 1e-6f) { ClearDirection(); return; }
+            Analog = analog.magnitude > 1f ? analog.normalized : analog;
+            InputLogic.Quantise8(Analog, deadZone, out U, out D, out L, out R);
+            if (knobRt != null) knobRt.anchoredPosition = Analog * radius * 0.6f;
+            UpdateArrows();
         }
 
         public void ClearDirection() {
@@ -106,6 +174,7 @@ namespace IK.Input {
             Analog = Vector2.zero;
             lastSector = -1;
             if (knobRt != null) knobRt.anchoredPosition = Vector2.zero;
+            UpdateArrows();
         }
 
         public void ReleaseAll() {

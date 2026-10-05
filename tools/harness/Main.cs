@@ -33,12 +33,40 @@ public static class H {
             e.SetTeam(0, new[] { a, a2 }); e.SetTeam(1, new[] { b, b2 });
             e.StartRound(1);
         }
-        string lastK = ""; int same = 0;
+        if (Environment.GetEnvironmentVariable("IK_DUMP") is string dn) {
+            void D(System.Collections.Generic.List<StateController> cs, string ind) { foreach (var c in cs) { Console.WriteLine(ind + c.Type + " " + c.Name + " trig=" + string.Join(" & ", c.TriggerAll.Select(x => x.Source)) + " groups=" + string.Join(";", c.TriggerGroups.Select(g => g.Key + ":" + string.Join(" & ", g.Value.Select(x => x.ToString())))) + " " + string.Join(", ", c.Params.Select(kv => kv.Key + "=" + kv.Value))); if (c.Children != null) D(c.Children, ind + "  "); } }
+            var sd = b.ActiveStates.Get(int.Parse(dn)); Console.WriteLine("DUMP " + sd); D(sd.Controllers, "  ");
+        }
+        string lastK = ""; int same = 0; var c0 = new int[2];
+        // IK_PERF=1: managed bytes allocated and time per tick, AI vs engine (dev.7)
+        bool perf = Environment.GetEnvironmentVariable("IK_PERF") != null;
+        var sw = System.Diagnostics.Stopwatch.StartNew(); long aiBytes = 0, engBytes = 0, aiTicks = 0, engTicks = 0, maxEng = 0; int perfN = 0;
         for (int t = 0; t < 99*60+400; t++) { if (e.MatchOver && e.State == RoundState.WinPose) break;
             if (tm != null) { var p0 = e.Players[0]; var p1 = e.Players[1]; e.Tick(ais[p0].Tick(p0,p1,e), ais[p1].Tick(p1,p0,e)); if (e.TaggedIn[0] != null || e.TaggedIn[1] != null) Console.WriteLine($"t{t} TAG side0 {e.TaggedIn[0]?.Id} side1 {e.TaggedIn[1]?.Id}"); a = e.Players[0]; b = e.Players[1]; }
+            else if (perf) {
+                long m0 = GC.GetAllocatedBytesForCurrentThread(); long w0 = sw.ElapsedTicks;
+                var k1 = ai1.Tick(a,b,e); var k2 = ai2.Tick(b,a,e);
+                long m1 = GC.GetAllocatedBytesForCurrentThread(); long w1 = sw.ElapsedTicks;
+                e.Tick(k1, k2);
+                long m2 = GC.GetAllocatedBytesForCurrentThread(); long w2 = sw.ElapsedTicks;
+                if (t >= 60) { aiBytes += m1 - m0; engBytes += m2 - m1; aiTicks += w1 - w0; engTicks += w2 - w1; maxEng = Math.Max(maxEng, w2 - w1); perfN++; }
+            }
             else e.Tick(ai1.Tick(a,b,e), ai2.Tick(b,a,e));
+            if (Environment.GetEnvironmentVariable("IK_EVAL") is string ev && t == int.Parse(Environment.GetEnvironmentVariable("IK_EVALT") ?? "400")) foreach (var x in ev.Split('|')) Console.WriteLine($"EVAL t{t} [{x}] a={a.EvalFloat(x)} b={b.EvalFloat(x)} state={e.State}");
+            // dev.8: IK_CTRL0=1 reports a fighter idling in state 0 without control during the fight (the "stuck player")
+            if (Environment.GetEnvironmentVariable("IK_CTRL0") != null && e.State == RoundState.Fighting) {
+                foreach (var f in new[] { a, b }) {
+                    int i = f == a ? 0 : 1;
+                    if (f.StateNo == 0 && !f.Ctrl) { if (++c0[i] == 20) Console.WriteLine($"CTRL0 t{t} p{i + 1} st0 ctrl0 since t{t - 19} prev{f.PrevStateNo} hp{f.HitPauseTime} time{f.Time} pause{e.PauseTime}/{e.SuperPauseTime} {f.LastTransition}"); }
+                    else { if (c0[i] >= 20) Console.WriteLine($"CTRL0 end t{t} p{i + 1} after {c0[i]} ticks -> st{f.StateNo} ctrl{f.Ctrl}"); c0[i] = 0; }
+                }
+            }
             if (Environment.GetEnvironmentVariable("IK_STUCK") != null) { var k = $"{a.StateNo} {a.PosX:F1} {b.StateNo} {b.PosX:F1} {a.Anim?.Time} {b.Anim?.Time}"; if (k == lastK) { if (++same == 300) Console.WriteLine($"STUCK t{t} {k} sp{e.SuperPauseTime} p{e.PauseTime} hpA{a.HitPauseTime} hpB{b.HitPauseTime} chars{e.Chars.Count} bindA{a.BindTimeLeft} bindB{b.BindTimeLeft}"); } else { same = 0; lastK = k; } }
             if (t % (args.Length>2?int.Parse(args[2]):300) == 0 && t < (args.Length>3?int.Parse(args[3]):99999)) Console.WriteLine($"t{t} A f{a.Facing} st{a.StateNo} pos{a.PosX:F0} life{a.Life} | B f{b.Facing} st{b.StateNo} ctrl{b.Ctrl}  pos{b.PosX:F0} life{b.Life} id{a.Id}/{b.Id} alive{e.Alive(0)}-{e.Alive(1)} round {e.RoundNo} {e.State} wins {e.Wins[0]}-{e.Wins[1]}" + (Environment.GetEnvironmentVariable("IK_DEBUG") != null ? $" | A wx{a.WorldX:F0} {a.Type} {a.Move} ctrl{a.Ctrl} B wx{b.WorldX:F0} {b.Type} {b.Move} nat{b.NoAutoTurn} | A anim{a.AnimNo} t{a.Anim?.Time} at{a.Anim?.AnimTime} hp{a.HitPauseTime} hs{a.Ghv.HitShakeTime} time{a.Time} st{a.StateTime} {a.LastTransition}" : ""));
+        }
+        if (perf && perfN > 0) {
+            double tk = System.Diagnostics.Stopwatch.Frequency / 1000.0;
+            Console.WriteLine($"PERF ticks {perfN}  alloc/tick: ai {aiBytes / (double)perfN:F0} B  engine {engBytes / (double)perfN:F0} B  |  time/tick: ai {aiTicks / tk / perfN:F3} ms  engine {engTicks / tk / perfN:F3} ms (max {maxEng / tk:F2} ms)  gc0 {GC.CollectionCount(0)}");
         }
         Console.WriteLine("unknown triggers: " + string.Join(",", a.UnknownTriggers) + " | " + string.Join(",", b.UnknownTriggers)); Console.WriteLine("moves " + ai1.Moves.Count + "/" + ai2.Moves.Count);
         Console.WriteLine("unknown ctrls: " + string.Join(",", a.UnknownControllers) + " | " + string.Join(",", b.UnknownControllers)); Console.WriteLine(string.Join(" ", a.Character.Warnings) + string.Join(" ", b.Character.Warnings));

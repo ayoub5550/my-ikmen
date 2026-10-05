@@ -43,7 +43,7 @@ namespace IK.UI {
 
         /// <summary>Builds the motif background once system.sff has been decoded (MotifAssets.Ready).</summary>
         protected void EnsureBackground() {
-            if (bgBuilt || View == null || string.IsNullOrEmpty(bgPrefix) || !MotifAssets.Ready) return;
+            if (bgBuilt || View == null || string.IsNullOrEmpty(bgPrefix) || !MotifAssets.SpritesReady) return;
             bgBuilt = true;
             View.SetBackground(bgPrefix);
         }

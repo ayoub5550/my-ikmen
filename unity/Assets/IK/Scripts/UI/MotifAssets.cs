@@ -101,16 +101,30 @@ namespace IK.UI {
                     LoadError = "motif: " + e.Message;
                     motif = Motif.Parse("", MotifDef);
                 }
-                var sffBytes = sff; var sndBytes = snd;
+                // dev.8: system.sff is indexed at once and its sprites are decoded on demand
+                // (lazy), so the title background is drawn on the first frame; only the
+                // sounds are still decoded on a worker thread.
+                if (sff != null) {
+                    var t0 = System.Diagnostics.Stopwatch.StartNew();
+                    try { motif.Sprites = SffFile.Load(sff, false, true); }
+                    catch (Exception e) { LoadError = "motif art: " + e.Message; Debug.LogWarning("[IK] " + LoadError); }
+                    SpritesIndexMs = (float)t0.Elapsed.TotalMilliseconds;
+                }
+                var sndBytes = snd;
                 loading = System.Threading.Tasks.Task.Run(() => {
-                    SffFile f = sffBytes != null ? SffFile.Load(sffBytes, false) : null;
                     SndFile w = null;
                     if (sndBytes != null) { try { w = SndFile.Load(sndBytes); } catch (Exception) { w = null; } }
-                    return (f, w);
+                    return ((SffFile)null, w);
                 });
                 return motif;
             }
         }
+
+        /// <summary>Time to index system.sff (dev.8 probe).</summary>
+        public static float SpritesIndexMs { get; private set; }
+
+        /// <summary>True once system.sff is indexed (or failed): backgrounds can be built.</summary>
+        public static bool SpritesReady { get { var m = Motif; return m.Sprites != null || LoadError != null; } }
 
         /// <summary>True once system.sff / system.snd are decoded (or failed).</summary>
         public static bool Ready { get { var _ = Motif; Poll(); return loading == null; } }
@@ -125,7 +139,7 @@ namespace IK.UI {
         static void Poll() {
             if (loading == null || !loading.IsCompleted) return;
             if (loading.IsFaulted) LoadError = "motif art: " + (loading.Exception != null ? loading.Exception.GetBaseException().Message : "failed");
-            else { motif.Sprites = loading.Result.Item1; motif.Sounds = loading.Result.Item2; }
+            else { if (loading.Result.Item1 != null) motif.Sprites = loading.Result.Item1; motif.Sounds = loading.Result.Item2; }
             loading = null;
         }
 
@@ -158,16 +172,29 @@ namespace IK.UI {
         public static Roster Roster {
             get {
                 if (roster != null) return roster;
-                var bytes = Source.Read(SelectDef);
-                roster = bytes != null ? Roster.Parse(bytes) : Roster.Parse("[Characters]\nkfm, stages/kfm.def\n[ExtraStages]\nstages/kfm.def\n");
+                // dev.8: the owner's own select.def (files/data/select.def) replaces the built-in
+                // one; otherwise every character / stage copied to files/chars, files/stages is
+                // added after the built-in roster
+                var own = ContentSource.ReadExternal("data/" + SelectDef);
+                var bytes = own ?? Source.Read(SelectDef);
+                string text = bytes != null ? MugenDef.DecodeText(bytes) : "[Characters]\nkfm, stages/kfm.def\n[ExtraStages]\nstages/kfm.def\n";
+                if (own == null) {
+                    var extra = new System.Text.StringBuilder();
+                    var ec = ContentSource.ExternalChars();
+                    var es = ContentSource.ExternalStages();
+                    if (ec.Count > 0) { extra.Append("\n[Characters]\n"); foreach (var c in ec) extra.Append(c).Append('\n'); }
+                    if (es.Count > 0) { extra.Append("\n[ExtraStages]\n"); foreach (var st in es) extra.Append(st).Append('\n'); }
+                    if (extra.Length > 0) { text += extra.ToString(); Debug.Log("[IK] own content: " + ec.Count + " chars, " + es.Count + " stages"); }
+                }
+                roster = Roster.Parse(text);
                 roster.Filter(
                     c => {
-                        var b = new ResourcesSource(c.CharGroup).Read(c.CharDef);
+                        var b = ContentSource.For(c.CharGroup).Read(c.CharDef);
                         if (b == null) return "not packed";
                         return Roster.CharDefProblem(MugenDef.Parse(b));
                     },
                     s => {
-                        var b = new ResourcesSource("stages").Read(s.Def);
+                        var b = ContentSource.For("stages").Read(s.Def);
                         if (b == null) return "not packed";
                         var def = MugenDef.Parse(b);
                         var why = Roster.StageDefProblem(def);
@@ -197,7 +224,7 @@ namespace IK.UI {
             string key = c.CharGroup + "/" + c.CharDef;
             if (chars.TryGetValue(key, out var info)) return info;
             info = new CharInfo { Entry = c };
-            try { info.Character = MugenCharacter.Load(new ResourcesSource(c.CharGroup), c.CharDef, false); }
+            try { info.Character = MugenCharacter.Load(ContentSource.For(c.CharGroup), c.CharDef, false); }
             catch (Exception e) { info.Error = e.Message; }
             chars[key] = info;
             return info;

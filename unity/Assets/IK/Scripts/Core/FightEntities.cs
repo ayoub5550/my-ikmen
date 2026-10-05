@@ -37,7 +37,7 @@ namespace IK.Core {
         public void ReadParam(string key, string val, Func<string, float> eval) {
             var p = MugenDef.SplitCsv(val);
             int I(int i, int def) => i < p.Length && p[i].Length > 0 ? (int)Math.Round(eval(p[i])) : def;
-            switch (key.Trim().ToLowerInvariant()) {
+            switch (key.Trim().Lc()) {
                 case "time": Time = I(0, 0); Elapsed = 0; break;
                 case "add": for (int i = 0; i < 3; i++) Add[i] = I(i, 0); break;
                 case "mul": for (int i = 0; i < 3; i++) Mul[i] = I(i, 256); break;

@@ -286,6 +286,19 @@ namespace IK.EditorTools {
             Check(training.Fighter != null, "Fight engine starts from Resources" +
                   (training.LoadError != null ? ": " + training.LoadError : ""));
             Check(app.Touch.Visible, "Training shows the on-screen controls");
+            // dev.7: visible is not enough — dev.1-6 drew the controls UNDER the opaque screens
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            CaptureFrame(Dir + "training-touch.png");
+            app.Router.allowTouchControls = false; app.Touch.SetVisible(false);
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            CaptureFrame(Dir + "training-notouch.png");
+            app.Router.allowTouchControls = true; app.Touch.SetVisible(true);
+            CheckRegionPixels(Dir + "training-notouch.png", Dir + "training-touch.png", app.Touch.Get(ControlId.HP).GetComponent<RectTransform>(),
+                              "The attack buttons are drawn on top of the training screen");
+            CheckRegionPixels(Dir + "training-notouch.png", Dir + "training-touch.png", app.Touch.Direction.GetComponent<RectTransform>().Find("DirectionZone/DirBase") as RectTransform,
+                              "The direction pad is drawn on top of the training screen");
 
             if (training.Fighter != null) {
                 var fighter = training.Fighter;
@@ -578,6 +591,27 @@ namespace IK.EditorTools {
             return null;
         }
 
+        /// <summary>Pixels that differ between two captures inside a control's rectangle.</summary>
+        void CheckRegionPixels(string fileA, string fileB, RectTransform rt, string label) {
+            if (rt == null) { Check(false, label + " (control not found)"); return; }
+            var a = new Texture2D(2, 2); var b = new Texture2D(2, 2);
+            a.LoadImage(File.ReadAllBytes(fileA)); b.LoadImage(File.ReadAllBytes(fileB));
+            var corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(corners[0].x), 0, a.width - 1);
+            int y0 = Mathf.Clamp(Mathf.FloorToInt(corners[0].y), 0, a.height - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt(corners[2].x), 0, a.width - 1);
+            int y1 = Mathf.Clamp(Mathf.CeilToInt(corners[2].y), 0, a.height - 1);
+            int changed = 0;
+            for (int y = y0; y < y1; y++)
+                for (int x = x0; x < x1; x++) {
+                    var p = a.GetPixel(x, y); var q = b.GetPixel(x, y);
+                    if (Mathf.Abs(p.r - q.r) + Mathf.Abs(p.g - q.g) + Mathf.Abs(p.b - q.b) > 0.15f) changed++;
+                }
+            Check(changed > 300, label + " (changed pixels=" + changed + ")");
+            DestroyImmediate(a); DestroyImmediate(b);
+        }
+
         void CheckPressedPixels(IKApp app, ControlId id) {
             var normal = new Texture2D(2, 2);
             var pressed = new Texture2D(2, 2);
@@ -666,7 +700,8 @@ namespace IK.EditorTools {
 
         static void CaptureFrame(string path) {
             var camera = Camera.main;
-            var canvases = FindObjectsOfType<Canvas>();
+            // root canvases only: a nested canvas (dev.7 fight stage) reports and changes its root's mode
+            var canvases = System.Array.FindAll(FindObjectsOfType<Canvas>(), c => c.isRootCanvas);
             var modes = new RenderMode[canvases.Length];
             var cameras = new Camera[canvases.Length];
             var distances = new float[canvases.Length];
