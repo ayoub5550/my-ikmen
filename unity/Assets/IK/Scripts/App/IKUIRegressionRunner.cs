@@ -20,7 +20,7 @@ namespace IK.EditorTools {
     /// <see cref="PointerEventData"/>, renders real frames through llvmpipe and compares
     /// pixels. Started by <c>IK.EditorTools.IKUIRegression.Run</c> with IK_UI_FIXTURE=1.
     /// </summary>
-    public class IKUIRegressionRunner : MonoBehaviour {
+    public partial class IKUIRegressionRunner : MonoBehaviour {
         [Serializable]
         class Report {
             public string kind = "Rendered editor UI; synthetic pointer/layout tests. NOT physical-device touch QA.";
@@ -63,6 +63,9 @@ namespace IK.EditorTools {
             var app = IKApp.Instance;
             Check(app != null, "App boots and builds its canvases");
             if (app == null) { Finish(); yield break; }
+
+            // ---- dev.5: the game boots into the title; the dev.1-dev.4 menu is Options -> Developer ----
+            yield return FrontEndBoot(app);
 
             // ---- 8. menu -> settings -> every page -> back ----
             Check(app.Menu.Visible, "Main menu visible at start");
@@ -491,6 +494,9 @@ namespace IK.EditorTools {
             }
             app.Show(Screen_.Main);
             yield return null;
+
+            // ---- dev.5: title, select, VS, results and the mode flow (IKUIRegressionRunner.FrontEnd.cs) ----
+            yield return FrontEndChecks(app);
 
             // ---- 11. labels render in both languages ----
             app.Show(Screen_.Main);

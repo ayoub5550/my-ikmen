@@ -15,6 +15,7 @@ namespace IK.UI {
         public string CurrentPage { get; private set; } = "Controls";
         public Action onBack;
         public Action onEditLayout;
+        public Action onDeveloper;            // dev.5: the dev.1-dev.4 screens (input test, viewer, old training)
         public Action onChanged;              // so the touch layer can rebuild live
 
         static readonly string[] Pages = { "Controls", "Game", "Audio", "Video", "Language", "About" };
@@ -42,6 +43,8 @@ namespace IK.UI {
 
             UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(110, -44), new Vector2(180, 64),
                          Loc.T("common.back"), () => onBack?.Invoke(), 26);
+            UIKit.Button(Root, "Developer", new Vector2(1f, 1f), new Vector2(-110, -44), new Vector2(180, 64),
+                         Loc.T("fe.developer"), () => onDeveloper?.Invoke(), 24);
 
             content = UIKit.Panel(Root, "Content", new Vector2(0.08f, 0.04f), new Vector2(0.92f, 0.80f),
                                   Vector2.zero, Vector2.zero);

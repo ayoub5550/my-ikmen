@@ -1,17 +1,25 @@
 using UnityEngine;
 using UnityEngine.UI;
+using IK.Core;
 using IK.Input;
 using IK.Settings;
 using IK.UI;
 
 namespace IK.App {
-    public enum Screen_ { Main, InputTest, Settings, Layout, Viewer, Training, Fight }
+    /// <summary>
+    /// Every screen of the app. Since dev.5 the game boots into <see cref="Title"/>; the
+    /// dev.1-dev.4 screens (input test, viewer, training room, the dummy fight) live in the
+    /// Developer menu (<see cref="Main"/>), reached from Options → Developer.
+    /// </summary>
+    public enum Screen_ { Main, InputTest, Settings, Layout, Viewer, Training, Fight,
+                          Title, Select, Versus, Victory, Continue, Results, Credits }
 
     /// <summary>
-    /// dev.1 application shell: builds every screen from code, owns the canvases and the
-    /// 60 Hz <see cref="InputRouter"/>, and wires the Android back button.
-    /// There is no fight engine yet — the Input Test screen is the gate where the touch
-    /// layer is judged (docs/TOUCH_AND_SETTINGS.md §6).
+    /// The application shell: builds every screen from code, owns the canvases and the
+    /// 60 Hz <see cref="InputRouter"/>, wires the Android back button, and drives the game
+    /// modes through <see cref="GameFlow"/> (title → select → VS → fight → victory /
+    /// continue / results → ...). The fight itself is <see cref="FightScreen"/>, started
+    /// through <see cref="FightLauncher"/>.
     /// </summary>
     public class IKApp : MonoBehaviour {
         public static IKApp Instance { get; private set; }
@@ -21,6 +29,7 @@ namespace IK.App {
         public TouchControls Touch { get; private set; }
         public InputRouter Router { get; private set; }
         public GamepadInput Gamepad { get; private set; }
+        /// <summary>The Developer menu (the dev.1-dev.4 title screen).</summary>
         public MainMenu Menu { get; private set; }
         public SettingsMenu Settings { get; private set; }
         public LayoutEditor Layout { get; private set; }
@@ -28,7 +37,19 @@ namespace IK.App {
         public TrainingScreen Training { get; private set; }
         public FightScreen Fight { get; private set; }
         public InputDisplay Display { get; private set; }
-        public Screen_ Current { get; private set; } = Screen_.Main;
+        public TitleScreen Title { get; private set; }
+        public SelectScreen Select { get; private set; }
+        public VersusScreen Versus { get; private set; }
+        public VictoryScreen Victory { get; private set; }
+        public ContinueScreen ContinueMenu { get; private set; }
+        public ResultsScreen Results { get; private set; }
+        public CreditsScreen Credits { get; private set; }
+        public GameFlow Flow { get; private set; } = new GameFlow();
+        public Screen_ Current { get; private set; } = Screen_.Title;
+        /// <summary>True while the fight screen plays a match started by the flow.</summary>
+        public bool InFlowMatch { get; private set; }
+
+        Screen_ settingsReturn = Screen_.Title;
 
         void Awake() {
             Instance = this;
@@ -66,15 +87,17 @@ namespace IK.App {
             Menu = gameObject.AddComponent<MainMenu>();
             Menu.Build(root);
             Menu.onInputTest = () => Show(Screen_.InputTest);
-            Menu.onSettings = () => Show(Screen_.Settings);
+            Menu.onSettings = () => OpenSettings(Screen_.Main);
             Menu.onViewer = () => Show(Screen_.Viewer);
             Menu.onTraining = () => Show(Screen_.Training);
-            Menu.onFight = () => Show(Screen_.Fight);
+            Menu.onFight = () => { Fight.ClearMatch(); InFlowMatch = false; Show(Screen_.Fight); };
+            Menu.onBack = () => Show(Screen_.Title);
 
             Settings = gameObject.AddComponent<SettingsMenu>();
             Settings.Build(root);
-            Settings.onBack = () => Show(Screen_.Main);
+            Settings.onBack = () => Show(settingsReturn);
             Settings.onEditLayout = () => Show(Screen_.Layout);
+            Settings.onDeveloper = () => Show(Screen_.Main);
             Settings.onChanged = RebuildTouch;
 
             Viewer = gameObject.AddComponent<CharViewer>();
@@ -87,15 +110,151 @@ namespace IK.App {
 
             Fight = gameObject.AddComponent<FightScreen>();
             Fight.Build(root);
-            Fight.onBack = () => Show(Screen_.Main);
+            Fight.onBack = () => Show(InFlowMatch ? Screen_.Title : Screen_.Main);
 
             Layout = gameObject.AddComponent<LayoutEditor>();
             Layout.Build(root);
             Layout.onClose = () => Show(Screen_.Settings);
             Layout.onSaved = RebuildTouch;
 
-            Show(Screen_.Main);
+            BuildFrontEnd(root);
+            Show(Screen_.Title);
         }
+
+        // ------------------------------------------------------------------ front end
+
+        void BuildFrontEnd(RectTransform root) {
+            Title = gameObject.AddComponent<TitleScreen>();
+            Title.Build(root);
+            Title.onSelect = OnTitle;
+
+            Select = gameObject.AddComponent<SelectScreen>();
+            Select.Build(root);
+            Select.onBack = () => Show(Screen_.Title);
+            Select.onDone = (p1, pal1, p2, pal2, stage, level) => {
+                if (GameFlow.PicksDifficulty(Flow.Mode)) Flow.Difficulty = level;
+                Go(Flow.Selected(p1, pal1, p2, pal2, stage));
+            };
+
+            Versus = gameObject.AddComponent<VersusScreen>();
+            Versus.Build(root);
+            Versus.onDone = () => Go(Flow.VersusDone());
+
+            Victory = gameObject.AddComponent<VictoryScreen>();
+            Victory.Build(root);
+            Victory.onDone = () => Go(Flow.VictoryDone());
+
+            ContinueMenu = gameObject.AddComponent<ContinueScreen>();
+            ContinueMenu.Build(root);
+            ContinueMenu.onAnswer = yes => Go(Flow.ContinueAnswered(yes));
+
+            Results = gameObject.AddComponent<ResultsScreen>();
+            Results.Build(root);
+            Results.onDone = () => Go(Flow.ResultsDone());
+
+            Credits = gameObject.AddComponent<CreditsScreen>();
+            Credits.Build(root);
+            Credits.onBack = () => Show(Screen_.Title);
+        }
+
+        void OnTitle(string id) {
+            switch (id) {
+                case "arcade": StartMode(GameMode.Arcade); break;
+                case "versus": StartMode(GameMode.Versus); break;
+                case "training": StartMode(GameMode.Training); break;
+                case "survival": StartMode(GameMode.Survival); break;
+                case "watch": StartMode(GameMode.Watch); break;
+                case "options": OpenSettings(Screen_.Title); break;
+                case "credits": Show(Screen_.Credits); break;
+                case "exit": Application.Quit(); break;
+            }
+        }
+
+        void OpenSettings(Screen_ back) {
+            settingsReturn = back;
+            Show(Screen_.Settings);
+        }
+
+        /// <summary>Starts a game mode from the title: the select screen of that mode.</summary>
+        public void StartMode(GameMode mode) {
+            var s = SettingsStore.Current;
+            Flow.Difficulty = s.difficulty;
+            Flow.RoundsToWin = s.roundsToWin;
+            Flow.RoundTime = s.roundTime;
+            Go(Flow.Start(mode, MotifAssets.Roster));
+        }
+
+        /// <summary>Moves to the screen of a flow step.</summary>
+        public void Go(FlowStep step) {
+            switch (step) {
+                case FlowStep.Title:
+                    InFlowMatch = false;
+                    Show(Screen_.Title);
+                    break;
+                case FlowStep.Select:
+                    InFlowMatch = false;
+                    Select.Begin(Flow.Mode, Flow.Roster, Flow.Difficulty);
+                    Show(Screen_.Select);
+                    break;
+                case FlowStep.Versus:
+                    Versus.Begin(Flow.Current);
+                    Show(Screen_.Versus);
+                    break;
+                case FlowStep.Fight:
+                    StartFight();
+                    break;
+                case FlowStep.Victory:
+                    InFlowMatch = false;
+                    Victory.Begin(Flow.Current, Flow.LastResult);
+                    Show(Screen_.Victory);
+                    break;
+                case FlowStep.Continue:
+                    InFlowMatch = false;
+                    Show(Screen_.Continue);
+                    break;
+                case FlowStep.GameOver:
+                    Results.Begin(ResultsScreen.Kind.GameOver, Flow.Wins, Flow.Current != null ? Flow.Current.Players[0] : null);
+                    Show(Screen_.Results);
+                    break;
+                case FlowStep.WinScreen:
+                    InFlowMatch = false;
+                    Results.Begin(ResultsScreen.Kind.Win, Flow.Wins, Flow.Current != null ? Flow.Current.Players[0] : null);
+                    Show(Screen_.Results);
+                    break;
+                case FlowStep.SurvivalResults:
+                    InFlowMatch = false;
+                    Results.Begin(ResultsScreen.Kind.Survival, Flow.Wins, Flow.Current != null ? Flow.Current.Players[0] : null);
+                    Show(Screen_.Results);
+                    break;
+            }
+        }
+
+        void StartFight() {
+            bool endedAlready = false;
+            InFlowMatch = true;
+            bool started = FightLauncher.Start(Fight, Flow.Current, r => {
+                endedAlready = true;
+                InFlowMatch = false;
+                Go(Flow.MatchEnded(r));
+            });
+            if (!started) { InFlowMatch = false; Go(Flow.MatchEnded(new MatchResult { Aborted = true })); return; }
+            if (!endedAlready) Show(Screen_.Fight);
+        }
+
+        FrontEndScreen FrontEnd(Screen_ s) {
+            switch (s) {
+                case Screen_.Title: return Title;
+                case Screen_.Select: return Select;
+                case Screen_.Versus: return Versus;
+                case Screen_.Victory: return Victory;
+                case Screen_.Continue: return ContinueMenu;
+                case Screen_.Results: return Results;
+                case Screen_.Credits: return Credits;
+            }
+            return null;
+        }
+
+        // ------------------------------------------------------------------ screens
 
         /// <summary>Rebuilds the on-screen controls after a settings or layout change.</summary>
         public void RebuildTouch() {
@@ -118,6 +277,10 @@ namespace IK.App {
             Viewer.SetVisible(screen == Screen_.Viewer);
             Training.SetVisible(screen == Screen_.Training);
             Fight.SetVisible(screen == Screen_.Fight);
+            foreach (var fe in new FrontEndScreen[] { Title, Select, Versus, Victory, ContinueMenu, Results, Credits })
+                if (fe != null && FrontEnd(screen) != fe) fe.SetVisible(false);
+            var cur = FrontEnd(screen);
+            if (cur != null) { cur.SetVisible(true); cur.Root.SetAsLastSibling(); }
             Display.gameObject.SetActive(screen == Screen_.InputTest);
             bool wantTouch = screen == Screen_.InputTest || screen == Screen_.Training ||
                              screen == Screen_.Fight;
@@ -133,18 +296,42 @@ namespace IK.App {
             if (Current == Screen_.InputTest) Display.Feed(frame, Router.TickCount);
             else if (Current == Screen_.Training) Training.Feed(frame);
             else if (Current == Screen_.Fight) Fight.Feed(frame);
+            else {
+                var fe = FrontEnd(Current);
+                if (fe != null) fe.Feed(frame);
+            }
         }
 
         void Update() {
-            // Android back button: leave the current screen, pause in a match (dev.4+).
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape)) {
-                if (Current == Screen_.Layout) Show(Screen_.Settings);
-                else if (Current != Screen_.Main) Show(Screen_.Main);
-            }
+            // Android back button: Back in menus, pause in a match.
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape)) Back();
             if ((Current == Screen_.InputTest || Current == Screen_.Training) && Touch != null && !Touch.Visible &&
                 SettingsStore.Current.onScreenControls != OnScreenControls.Never &&
                 Router.LastDevice == InputDevice.Touch)
                 Touch.SetVisible(true);
+        }
+
+        /// <summary>What the Android back key does on each screen.</summary>
+        public void Back() {
+            switch (Current) {
+                case Screen_.Title: break;
+                case Screen_.Layout: Show(Screen_.Settings); break;
+                case Screen_.Settings: Show(settingsReturn); break;
+                case Screen_.Main: Show(Screen_.Title); break;
+                case Screen_.Fight:
+                    if (InFlowMatch || Fight.Setup != null) Fight.TogglePause();
+                    else Show(Screen_.Main);
+                    break;
+                case Screen_.Select:
+                case Screen_.Versus:
+                case Screen_.Victory:
+                case Screen_.Continue:
+                case Screen_.Results:
+                case Screen_.Credits:
+                    FrontEnd(Current).OnMenuKey(MenuKey.Cancel);
+                    break;
+                default: Show(Screen_.Main); break;
+            }
         }
 
         /// <summary>Entry point: builds the app in any scene, so no prefab can go missing.</summary>

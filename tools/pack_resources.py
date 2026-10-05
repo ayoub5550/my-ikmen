@@ -34,9 +34,30 @@ GROUPS: dict[str, list[str]] = {
         "chars/kfm/kfm.sff",
         "chars/kfm/kfm.snd",
     ],
+    # dev.5 roster (assets/ikmen/select.def). kfm_zss / kfm_zaxis are not shipped: their
+    # states are ZSS scripts, which the C# engine does not interpret.
+    "chars/kfm720": [
+        "chars/kfm720/kfm720.def",
+        "chars/kfm720/kfm720.cns",
+        "chars/kfm720/kfm720.cmd",
+        "chars/kfm720/kfm720.air",
+        "chars/kfm720/kfm720.sff",
+        "chars/kfm720/kfm.snd",
+    ],
+    # every 2D stage of the screenpack (stage3d* need 3D models: out of scope)
     "stages": [
         "stages/kfm.def",
         "stages/kfm.sff",
+        "stages/stage0.def",
+        "stages/stage0.sff",
+        "stages/stage0-720.def",
+        "stages/stage0-720.sff",
+        "stages/stage1.def",
+        "stages/stage1.sff",
+        "stages/stageZ.def",
+        "stages/stageZ.sff",
+        "stages/interactivestage.def",
+        "stages/interactivestage.sff",
     ],
     "data": [
         "data/fight.def",
@@ -64,8 +85,25 @@ GROUPS: dict[str, list[str]] = {
         "data/ikemen1/fonts/Round.sff",
         "data/ikemen1/fonts/Timer.def",
         "data/ikemen1/fonts/Timer.sff",
+        # dev.5 front end: the motif (title / select / VS / victory / continue / results),
+        # its sprites and menu sounds, the two fonts only the menus use, the roster, and the
+        # screenpack licence shown on the credits screen (CC BY 3.0 attribution)
+        "data/ikemen1/system.def",
+        "data/ikemen1/system.sff",
+        "data/system.snd",
+        "data/ikemen1/fonts/Menu1.def",
+        "data/ikemen1/fonts/Menu1.sff",
+        "data/ikemen1/fonts/PixelFlat.def",
+        "data/ikemen1/fonts/PixelFlat.sff",
+        "//assets/ikmen/select.def",
+        "LICENCE.txt",
     ],
 }
+
+
+def source_path(rel: str) -> pathlib.Path:
+    """Paths are relative to assets/screenpack; a leading '//' means relative to the repo root."""
+    return REPO / rel[2:] if rel.startswith("//") else SRC / rel
 
 
 def asset_name(path: str) -> str:
@@ -87,7 +125,7 @@ def main() -> int:
         if not args.check:
             out_dir.mkdir(parents=True, exist_ok=True)
         for rel in files:
-            src = SRC / rel
+            src = source_path(rel)
             if not src.is_file():
                 print(f"MISSING SOURCE {rel}", file=sys.stderr)
                 return 2
