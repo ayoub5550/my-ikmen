@@ -483,7 +483,7 @@ namespace IK.Core {
             var anim = Character?.Air?.Get(no);
             if (anim == null) return;
             AnimNo = no;
-            Anim = anim;
+            Anim = anim.Instance();
             Anim.Reset();
             for (int i = 1; i < elem && i < anim.Frames.Count; i++) Anim.Tick();
         }
