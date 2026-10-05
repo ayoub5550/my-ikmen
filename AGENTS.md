@@ -1,5 +1,15 @@
 # AGENTS.md — guide for developers and AI agents continuing this project
 
+## Fist Forge distribution branch (2026-10-05)
+
+This branch rebrands dev.8 as **Fist Forge 1.0.0**, package `com.ayoub.fistforge`.
+See `docs/FIST_FORGE_RELEASE.md` and `docs/FIST_FORGE_BUYER_GUIDE.md`.
+The build menu is now **Fist Forge**, default APK `Builds/fist-forge.apk`.
+The brand icon lives at `Assets/IK/Resources/brand/fist-forge-icon.png`;
+`IKIconImport` configures import settings and `IKBuildPipeline` assigns launcher icons.
+Historical milestone instructions below retain the old IKMEN identity.
+Do not merge this branding branch into main without the owner's explicit request.
+
 Read this file fully before touching anything. It is written for coding agents and humans.
 Keep it up to date whenever you change the pipeline, the layout or a decision.
 The owner communicates in **Arabic**; code, comments and this file are in **English**;

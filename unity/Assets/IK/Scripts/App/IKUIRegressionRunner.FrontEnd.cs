@@ -56,14 +56,16 @@ namespace IK.EditorTools {
                 string full = Dir + "title-" + language + ".png";
                 CaptureFrame(full);
                 if (language == Language.English) {
-                    title.View.BgFront.gameObject.SetActive(false);   // layerno 1 = the logo
+                    // Fist Forge: the upstream logo layer (layerno 1) is hidden, the brand logo replaces it
+                    Check(!title.View.BgFront.gameObject.activeSelf, "Upstream Ikemen title logo layer is hidden");
+                    title.BrandLogo.gameObject.SetActive(false);
                     Canvas.ForceUpdateCanvases();
                     yield return null;
                     CaptureFrame(Dir + "title-nologo.png");
-                    title.View.BgFront.gameObject.SetActive(true);
-                    var lr = title.LogoRect;
+                    title.BrandLogo.gameObject.SetActive(true);
+                    var lr = TitleScreen.BrandRect;
                     int logo = DifferentPixelsIn(full, Dir + "title-nologo.png", title.View.PixelRect(lr.x, lr.y, lr.width, lr.height));
-                    Check(logo > 2000, "Title logo is drawn from system.sff (logo pixels=" + logo + ")" + (logo > 2000 ? "" : " rect " + title.View.PixelRect(lr.x, lr.y, lr.width, lr.height) + " lr " + lr));
+                    Check(logo > 2000, "Fist Forge brand logo is drawn (logo pixels=" + logo + ")" + (logo > 2000 ? "" : " rect " + title.View.PixelRect(lr.x, lr.y, lr.width, lr.height)));
                     Check(title.Items[0].Label.UsedBitmap && title.Items[0].Label.Value == "ARCADE",
                           "English menu uses the motif's names and bitmap font (" + title.Items[0].Label.Value + ")");
                     Check(title.View.DrawnBackgroundElements >= 8, "Title background elements drawn: " + title.View.DrawnBackgroundElements);

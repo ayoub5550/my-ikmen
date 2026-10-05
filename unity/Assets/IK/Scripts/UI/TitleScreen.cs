@@ -23,6 +23,10 @@ namespace IK.UI {
         public int Cursor { get; private set; }
         public Action<string> onSelect;
         MotifView.TextNode footerLeft, footerRight;
+        /// <summary>Fist Forge brand logo (icon + wordmark) shown instead of the upstream Ikemen logo.</summary>
+        public RectTransform BrandLogo { get; private set; }
+        /// <summary>Motif-space rect (left, top, w, h) of <see cref="BrandLogo"/>.</summary>
+        public static readonly Rect BrandRect = new Rect(40f, 70f, 540f, 420f);
         float spacing;
         int top;
 
@@ -45,6 +49,11 @@ namespace IK.UI {
             CreateView(parent, "Title", "TitleBG");
             var t = View.Motif.Title;
             FadeInTicks = t.FadeInTime;
+            // Fist Forge: the screenpack's layerno = 1 elements are only the Ikemen logo and its
+            // shadows; hide that layer and draw the brand logo in the same left-hand area, clear
+            // of the right-aligned menu and the footer.
+            View.BgFront.gameObject.SetActive(false);
+            BuildBrandLogo();
             int n = Menu.GetLength(0);
             // menu.window.visibleitems is 6 in ikemen1; on a touch screen every item must be
             // reachable without scrolling, so the spacing shrinks a little when all fit
@@ -67,6 +76,23 @@ namespace IK.UI {
             }
             Refresh();
             FinishBuild();
+        }
+
+        void BuildBrandLogo() {
+            var r = BrandRect;
+            BrandLogo = UIKit.Rect(View.Top, "brandLogo", new Vector2(0f, 1f), MotifView.Ui(r.x + r.width / 2f, r.y + r.height / 2f), new Vector2(r.width, r.height));
+            var tex = Resources.Load<Texture2D>("brand/fist-forge-icon");
+            if (tex != null) {
+                var spr = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), Vector2.one * 0.5f);
+                UIKit.Image(BrandLogo, "icon", new Vector2(0.5f, 1f), new Vector2(0f, -130f), new Vector2(260f, 260f), spr);
+            }
+            var word = UIKit.Text(BrandLogo, "wordmark", new Vector2(0.5f, 0f), new Vector2(0f, 70f), new Vector2(r.width, 110f),
+                                  "FIST FORGE", 72, TextAnchor.MiddleCenter, Skin.Accent);
+            var rubik = Resources.Load<Font>("fonts/Rubik-Bold");
+            if (rubik != null) word.font = rubik;
+            var ol = word.gameObject.AddComponent<Outline>();
+            ol.effectColor = new Color32(14, 16, 24, 255);
+            ol.effectDistance = new Vector2(4f, -4f);
         }
 
         /// <summary>Label of an item in the current language.</summary>
@@ -94,7 +120,7 @@ namespace IK.UI {
                 rt.sizeDelta = new Vector2(480f, spacing);
             }
             var small = FightText.Read(null, "", "", 2, 1);
-            footerLeft.Set(small, 6f, View.Height - 1f, "my-ikmen · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
+            footerLeft.Set(small, 6f, View.Height - 1f, "Fist Forge · based on my-ikmen · Ikemen GO (MIT) · screenpack CC BY 3.0", new Color(0.75f, 0.75f, 0.75f), true);
             var right = FightText.Read(null, "", "", 2, -1);
             footerRight.Set(right, View.Width - 6f, View.Height - 1f, "v" + Application.version, new Color(0.75f, 0.75f, 0.75f), true);
         }

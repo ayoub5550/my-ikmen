@@ -25,7 +25,7 @@ namespace IK.UI {
 
         static readonly Dictionary<string, string[]> Strings = new Dictionary<string, string[]> {
             // key                         { Arabic, English }
-            { "app.title",                 new[] { "إكمن", "IKMEN" } },
+            { "app.title",                 new[] { "Fist Forge", "FIST FORGE" } },
             { "menu.inputTest",            new[] { "اختبار الأوامر", "Input Test" } },
             { "menu.settings",             new[] { "الإعدادات", "Settings" } },
             { "menu.about",                new[] { "حول اللعبة", "About" } },

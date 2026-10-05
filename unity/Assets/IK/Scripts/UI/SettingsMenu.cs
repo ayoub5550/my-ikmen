@@ -307,7 +307,7 @@ namespace IK.UI {
         void BuildAbout(RectTransform page) {
             StartRows();
             UIKit.Text(page, "version", new Vector2(0.5f, 1f), new Vector2(0, -60), new Vector2(760, 44),
-                       "my-ikmen " + Application.version, 26);
+                       "Fist Forge " + Application.version + " (based on my-ikmen)", 26);
             UIKit.Text(page, "credits", new Vector2(0.5f, 1f), new Vector2(0, -210), new Vector2(980, 220),
                        Loc.Arabic
                          ? "محرّك Ikemen GO (MIT) · رسوم الـ screenpack برخصة CC BY 3.0\nالفنانون: Ohmga Shironeko, SuperFromND, President Devon,\nRurouni, Shiyo Kakuge, Cylia Margatroid, Miguel Young\nخط Amiri برخصة OFL"

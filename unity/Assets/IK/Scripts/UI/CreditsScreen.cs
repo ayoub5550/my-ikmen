@@ -47,7 +47,7 @@ namespace IK.UI {
             var lic = new ResourcesSource(MotifAssets.DataGroup).Read("LICENCE.txt");
             LicenceText = lic != null ? MugenDef.DecodeText(lic) : "";
             var sb = new StringBuilder();
-            sb.AppendLine("my-ikmen — an Android fighting game on Unity, re-implementing the Ikemen GO / M.U.G.E.N engine in C# (MIT).");
+            sb.AppendLine("Fist Forge — built on my-ikmen, an Android fighting game on Unity, re-implementing the Ikemen GO / M.U.G.E.N engine in C# (MIT).");
             sb.AppendLine();
             sb.AppendLine("Ikemen GO engine (behavioural reference) — MIT licence, © the Ikemen GO contributors. https://github.com/ikemen-engine/Ikemen-GO");
             sb.AppendLine();
