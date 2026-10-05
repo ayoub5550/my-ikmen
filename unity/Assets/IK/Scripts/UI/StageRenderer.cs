@@ -158,7 +158,7 @@ namespace IK.UI {
                         var rt = img.rectTransform;
                         img.sprite = cache.SpriteFor(stage.Sprites, sprite);
                         img.color = new Color(1f, 1f, 1f, alpha);
-                        img.material = IsAdditive(bg) ? AdditiveMaterial : NormalMaterial;
+                        img.material = IsAdditive(bg) ? AdditiveMaterial : Crisp ? NormalMaterial : null;
                         img.enabled = img.sprite != null;
                         rt.sizeDelta = new Vector2(w * Mathf.Abs(sx), h * Mathf.Abs(sy));
                         rt.pivot = new Vector2(sprite.Width > 0 ? (float)sprite.X / sprite.Width : 0.5f,
@@ -204,6 +204,10 @@ namespace IK.UI {
             }
         }
         static Material normal;
+
+        /// <summary>Set by RenderQuality: the stage uses <see cref="NormalMaterial"/> only for Crisp
+        /// (the default UI shader is cheaper; on a software rasteriser Crisp cost ~6 ms a frame).</summary>
+        public static bool Crisp;
 
         /// <summary>True when MUGEN would blend this element additively.</summary>
         public static bool IsAdditive(StageBackground bg) =>
@@ -279,7 +283,7 @@ namespace IK.UI {
             g.TopScale = top;
             g.BottomScale = bottom;
             g.color = new Color(1f, 1f, 1f, alpha);
-            g.material = IsAdditive(bg) ? AdditiveMaterial : NormalMaterial;
+            g.material = IsAdditive(bg) ? AdditiveMaterial : Crisp ? NormalMaterial : null;
             var rt = g.rectTransform;
             rt.sizeDelta = new Vector2(width, height);
             // the axis of a parallax sprite is its top-centre in MUGEN, like a normal sprite

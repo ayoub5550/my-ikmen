@@ -70,6 +70,9 @@ namespace IK.EditorTools {
             PlayerSettings.MTRendering = true;
             PlayerSettings.enableFrameTimingStats = true;      // dev.7: CPU/GPU frame times in the benchmark
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.Android, ManagedStrippingLevel.Low);
+            // dev.7: fastest IL2CPP code (longer build): Master config + speed-optimised generation
+            PlayerSettings.SetIl2CppCompilerConfiguration(BuildTargetGroup.Android, Il2CppCompilerConfiguration.Master);
+            PlayerSettings.SetIl2CppCodeGeneration(UnityEditor.Build.NamedBuildTarget.Android, UnityEditor.Build.Il2CppCodeGeneration.OptimizeSpeed);
             PlayerSettings.stripEngineCode = true;
             QualitySettings.vSyncCount = 0;
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(MainScene, true) };

@@ -420,32 +420,48 @@ namespace IK.UI {
         /// Characters are cached between matches, so a rematch costs nothing here.
         /// </summary>
         void Prewarm() {
-            var watch = Stopwatch.StartNew();
-            int made = 0;
-            var seen = new HashSet<long>();
+            prewarmQueue.Clear();
+            PrewarmedSprites = 0;
+            PrewarmMilliseconds = 0;
             var fighters = new List<Fighter> { Engine.Players[0], Engine.Players[1] };
             for (int side = 0; side < 2; side++) foreach (var m in Engine.Team[side]) if (!fighters.Contains(m)) fighters.Add(m);
-            {
-                foreach (var f in fighters) {
-                    if (f == null) continue;
-                    var chr = f.Character;
-                    if (chr == null || chr.Sff == null || chr.Air == null) continue;
-                    seen.Clear();
-                    foreach (var a in chr.Air.Actions.Values)
-                        foreach (var fr in a.Frames)
-                            if (fr.Group >= 0) seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff));
-                    made += CacheFor(chr.Sff).Prewarm(chr.Sff, seen, PaletteOf(f));
-                }
+            var seen = new HashSet<long>();
+            foreach (var f in fighters) {
+                var chr = f?.Character;
+                if (chr == null || chr.Sff == null || chr.Air == null) continue;
+                var cache = CacheFor(chr.Sff);
+                var pal = PaletteOf(f);
+                seen.Clear();
+                foreach (var a in chr.Air.Actions.Values)
+                    foreach (var fr in a.Frames)
+                        if (fr.Group >= 0 && seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff)))
+                            prewarmQueue.Enqueue(new MugenAssetCache.PrewarmItem { Cache = cache, Sff = chr.Sff, GroupNumber = ((long)fr.Group << 16) | (uint)(fr.Number & 0xffff), Palette = pal });
             }
             if (fxAir != null && fxSff != null) {
+                var cache = CacheFor(fxSff);
                 seen.Clear();
                 foreach (var a in fxAir.Actions.Values)
                     foreach (var fr in a.Frames)
-                        if (fr.Group >= 0) seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff));
-                made += CacheFor(fxSff).Prewarm(fxSff, seen, null);
+                        if (fr.Group >= 0 && seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff)))
+                            prewarmQueue.Enqueue(new MugenAssetCache.PrewarmItem { Cache = cache, Sff = fxSff, GroupNumber = ((long)fr.Group << 16) | (uint)(fr.Number & 0xffff) });
             }
+            // a first slice now (the load screen is up anyway), the rest a few ms per frame
+            // during the round intro — no long freeze after the VS screen
+            PrewarmTick(PrewarmLoadBudgetMs);
+        }
+
+        /// <summary>Milliseconds of sprite building at load / per tick (dev.7).</summary>
+        public static double PrewarmLoadBudgetMs = 250, PrewarmTickBudgetMs = 3;
+        public bool PrewarmDone => prewarmQueue.Count == 0;
+        readonly Queue<MugenAssetCache.PrewarmItem> prewarmQueue = new Queue<MugenAssetCache.PrewarmItem>();
+
+        void PrewarmTick(double budget) {
+            if (prewarmQueue.Count == 0) return;
+            double t0 = IK.App.PerfMonitor.Now;
+            int made = PrewarmedSprites;
+            MugenAssetCache.PrewarmStep(prewarmQueue, budget, ref made);
             PrewarmedSprites = made;
-            PrewarmMilliseconds = watch.Elapsed.TotalMilliseconds;
+            PrewarmMilliseconds += IK.App.PerfMonitor.Now - t0;
         }
 
         /// <summary>dev.6: loads the partners of both sides and hands the teams to the engine.</summary>
@@ -567,6 +583,7 @@ namespace IK.UI {
             Redraw();
             IK.App.PerfMonitor.AddDraw(IK.App.PerfMonitor.Now - t1);
             IK.App.PerfMonitor.AddFightAlloc(IK.App.PerfMonitor.HeapUsed - heap0);
+            PrewarmTick(PrewarmTickBudgetMs);
             CheckMatchEnd();
         }
 

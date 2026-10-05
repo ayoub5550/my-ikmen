@@ -31,6 +31,7 @@ namespace IK.App {
         public static void ApplyFilter(PixelFilter f) {
             MugenAssetCache.Filter = f == PixelFilter.Sharp ? FilterMode.Point : FilterMode.Bilinear;
             Shader.SetGlobalFloat(PixelAAId, f == PixelFilter.Crisp ? 1f : 0f);
+            IK.UI.StageRenderer.Crisp = f == PixelFilter.Crisp;
         }
 
         /// <summary>Native panel size (the back buffer may already be scaled down).</summary>

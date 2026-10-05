@@ -34,6 +34,7 @@ namespace IK.App {
             public float allocKBPerFrame, allocKBMaxFrame, fightAllocKBPerFrame;
             public float monoHeapMB, totalAllocatedMB, textureMB;
             public int textures;
+            public int prewarmSprites; public float prewarmMs; public bool prewarmDone;
         }
 
         public static bool Running { get; private set; }
@@ -105,6 +106,9 @@ namespace IK.App {
             res.matchRestarts = restarts;
             res.maxSprites = maxSprites;
             res.gcCollections = GC.CollectionCount(0) - gc0;
+            res.prewarmSprites = fight.PrewarmedSprites;
+            res.prewarmMs = (float)fight.PrewarmMilliseconds;
+            res.prewarmDone = fight.PrewarmDone;
             Finish(app, savedCap, res);
         }
 

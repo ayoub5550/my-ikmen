@@ -136,6 +136,30 @@ namespace IK.Core {
             return made;
         }
 
+        /// <summary>
+        /// Incremental prewarm: builds sprites from the queue until <paramref name="budgetMs"/>
+        /// milliseconds have passed. Returns true when the queue is empty.
+        /// </summary>
+        public static bool PrewarmStep(Queue<PrewarmItem> queue, double budgetMs, ref int made) {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (queue.Count > 0) {
+                if (watch.Elapsed.TotalMilliseconds >= budgetMs) return false;
+                var it = queue.Dequeue();
+                if (it.Cache == null || it.Sff == null) continue;
+                var spr = it.Sff.Get((int)(it.GroupNumber >> 16), (int)(it.GroupNumber & 0xffff));
+                if (spr == null || spr.IsBlank) continue;
+                var p = spr.Raw || spr.OwnPalette != null ? null : it.Palette;
+                int before = it.Cache.sprites.Count;
+                it.Cache.SpriteFor(it.Sff, spr, p);
+                if (it.Cache.sprites.Count > before) made++;
+            }
+            return true;
+        }
+
+        public struct PrewarmItem {
+            public MugenAssetCache Cache; public SffFile Sff; public long GroupNumber; public uint[] Palette;
+        }
+
         /// <summary>RGBA32 texture; index 0 and palette alpha give transparency.</summary>
         public Texture2D TextureFor(SffSprite s, uint[] pal) {
             var tex = new Texture2D(s.Width, s.Height, TextureFormat.RGBA32, false) {
