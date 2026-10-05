@@ -176,7 +176,7 @@ namespace IK.Core {
                 if (f == null || f.Destroyed) continue;
                 if (IsFrozen(f)) continue;
                 f.TickHitTimers();
-                if (f.InHitPause) { f.HitPauseTime--; continue; }
+                if (f.InHitPause) { f.HitPauseTime--; f.TickHitPause(); continue; }
                 f.Tick();
             }
             StepPause();

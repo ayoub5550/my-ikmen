@@ -70,6 +70,8 @@ namespace IK.Core {
 
         /// <summary>Applied when a common state is entered (its `[Statedef]` line).</summary>
         public static void EnterCommon(Fighter f, int no) {
+            // every common1 movement state is movetype I (statedef default, bytecode.go)
+            if (IsCommon(no)) f.Move = MoveType.Idle;
             switch (no) {
                 case Stand:
                     f.Type = StateType.Standing; f.Phys = Physics.Stand;

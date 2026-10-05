@@ -24,7 +24,7 @@ public static class H {
         var e = new FightEngine(a, b, stage); e.AnnounceTime = 0;
         for (int t = 0; t < 99*60+400; t++) { if (e.MatchOver && e.State == RoundState.WinPose) break;
             e.Tick(ai1.Tick(a,b,e), ai2.Tick(b,a,e));
-            if (t % (args.Length>2?int.Parse(args[2]):300) == 0 && t < (args.Length>3?int.Parse(args[3]):99999)) Console.WriteLine($"t{t} A f{a.Facing} st{a.StateNo} pos{a.PosX:F0} life{a.Life} | B f{b.Facing} st{b.StateNo} ctrl{b.Ctrl}  pos{b.PosX:F0} life{b.Life} round {e.RoundNo} {e.State} wins {e.Wins[0]}-{e.Wins[1]}");
+            if (t % (args.Length>2?int.Parse(args[2]):300) == 0 && t < (args.Length>3?int.Parse(args[3]):99999)) Console.WriteLine($"t{t} A f{a.Facing} st{a.StateNo} pos{a.PosX:F0} life{a.Life} | B f{b.Facing} st{b.StateNo} ctrl{b.Ctrl}  pos{b.PosX:F0} life{b.Life} round {e.RoundNo} {e.State} wins {e.Wins[0]}-{e.Wins[1]}" + (Environment.GetEnvironmentVariable("IK_DEBUG") != null ? $" | A wx{a.WorldX:F0} {a.Type} {a.Move} ctrl{a.Ctrl} B wx{b.WorldX:F0} {b.Type} {b.Move} nat{b.NoAutoTurn} | A anim{a.AnimNo} t{a.Anim?.Time} at{a.Anim?.AnimTime} hp{a.HitPauseTime} hs{a.Ghv.HitShakeTime} time{a.Time} st{a.StateTime} {a.LastTransition}" : ""));
         }
         Console.WriteLine("unknown triggers: " + string.Join(",", a.UnknownTriggers) + " | " + string.Join(",", b.UnknownTriggers)); Console.WriteLine("moves " + ai1.Moves.Count + "/" + ai2.Moves.Count);
         Console.WriteLine("unknown ctrls: " + string.Join(",", a.UnknownControllers) + " | " + string.Join(",", b.UnknownControllers)); Console.WriteLine(string.Join(" ", a.Character.Warnings) + string.Join(" ", b.Character.Warnings));
