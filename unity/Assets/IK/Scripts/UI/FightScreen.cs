@@ -46,6 +46,8 @@ namespace IK.UI {
         public bool PausedByPlayer { get; private set; }
         /// <summary>Sprites drawn in the last frame (rendered checks).</summary>
         public int DrawnSprites { get; private set; }
+        /// <summary>dev.8 probe: background elements drawn by the stage renderer, -1 without one.</summary>
+        public int StageElements => stageRenderer != null ? stageRenderer.DrawnElements : -1;
         /// <summary>dev.7: the benchmark advances the fight itself (one tick per frame).</summary>
         public bool ExternalDrive;
         /// <summary>dev.7: sprites built during the last load (no first-use stalls in the fight).</summary>

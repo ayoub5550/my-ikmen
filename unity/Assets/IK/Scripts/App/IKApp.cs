@@ -366,7 +366,7 @@ namespace IK.App {
 
         void Update() {
             // Android back button: Back in menus, pause in a match.
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape)) Back();
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Escape) && !DeviceProbe.Active) Back();
             if ((Current == Screen_.InputTest || Current == Screen_.Training) && Touch != null && !Touch.Visible &&
                 SettingsStore.Current.onScreenControls != OnScreenControls.Never &&
                 Router.LastDevice == InputDevice.Touch)
