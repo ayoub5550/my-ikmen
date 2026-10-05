@@ -20,7 +20,7 @@ namespace IK.Core {
     /// animations and velocities, and a character's own override of a common state (KFM has
     /// none below 110) still wins.
     /// </summary>
-    public class Fighter : IExprContext {
+    public partial class Fighter : IExprContext {
         public readonly MugenCharacter Character;
         public readonly CharConstants Const;
         public readonly CnsFile States;

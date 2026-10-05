@@ -24,6 +24,38 @@ namespace IK.Core {
         public float StandFriction = 0.85f, CrouchFriction = 0.82f;
         public float StandFrictionThreshold = 2f, CrouchFrictionThreshold = 0.05f;
 
+        // ---- dev.4: the constants the hit system needs -------------------------
+        /// <summary>`[Data] fall.defence_up`: percentage the defence rises by after a knockdown.</summary>
+        public float FallDefenceUp = 50f;
+        /// <summary>`[Data] liedown.time`: ticks spent lying down before getting up.</summary>
+        public int LieDownTime = 60;
+        /// <summary>`[Data] airjuggle`: juggle points the character starts a combo with.</summary>
+        public int AirJuggle = 15;
+        /// <summary>`[Data] sparkno` / `guard.sparkno`: the HitDef defaults.</summary>
+        public int SparkNo = 2, GuardSparkNo = 40;
+
+        /// <summary>`[Size] attack.dist`: how far in front a guardable attack is felt (`inguarddist`).</summary>
+        public float AttackDist = 160f;
+        /// <summary>`[Size] attack.z.width` is ignored (2D); `[Size] attack.width` is not a MUGEN 1.0 key.</summary>
+        public float ProjAttackDist = 90f;
+
+        /// <summary>`[Movement] air.gethit.groundlevel`: y at which a falling character lands.</summary>
+        public float AirGetHitGroundLevel = 25f;
+        public float AirGetHitGroundRecoverGroundThreshold = -20f;
+        public float AirGetHitGroundRecoverGroundLevel = 10f;
+        public float AirGetHitAirRecoverThreshold = -1f;
+        public float AirGetHitAirRecoverYAccel = 0.35f;
+        public float AirGetHitTripGroundLevel = 15f;
+        public float DownBounceOffsetX = 0f, DownBounceOffsetY = 20f;
+        public float DownBounceYAccel = 0.4f;
+        public float DownBounceGroundLevel = 12f;
+        public float DownFrictionThreshold = 0.05f;
+
+        // Power the attacker and the receiver gain, as fractions of the damage dealt
+        // (MUGEN: getpower defaults to damage, givepower to damage/2; the guard variants halve them).
+        public float PowerMultiplierHit = 1f, PowerMultiplierGuard = 0.5f;
+        public float PowerMultiplierGive = 0.5f, PowerMultiplierGuardGive = 0.25f;
+
         public static CharConstants From(MugenDef def) {
             var c = new CharConstants();
             if (def == null) return c;
@@ -32,6 +64,11 @@ namespace IK.Core {
                 c.Life = data.GetInt("life", c.Life);
                 c.Attack = data.GetInt("attack", c.Attack);
                 c.Defence = data.GetInt("defence", c.Defence);
+                c.FallDefenceUp = data.GetFloat("fall.defence_up", c.FallDefenceUp);
+                c.LieDownTime = data.GetInt("liedown.time", c.LieDownTime);
+                c.AirJuggle = data.GetInt("airjuggle", c.AirJuggle);
+                c.SparkNo = data.GetInt("sparkno", c.SparkNo);
+                c.GuardSparkNo = data.GetInt("guard.sparkno", c.GuardSparkNo);
             }
             var size = def["size"];
             if (size != null) {
@@ -40,6 +77,8 @@ namespace IK.Core {
                 c.AirBack = size.GetFloat("air.back", c.AirBack);
                 c.AirFront = size.GetFloat("air.front", c.AirFront);
                 c.Height = size.GetFloat("height", c.Height);
+                c.AttackDist = size.GetFloat("attack.dist", c.AttackDist);
+                c.ProjAttackDist = size.GetFloat("proj.attack.dist", c.ProjAttackDist);
             }
             var vel = def["velocity"];
             if (vel != null) {
@@ -66,6 +105,20 @@ namespace IK.Core {
                 c.CrouchFriction = mov.GetFloat("crouch.friction", c.CrouchFriction);
                 c.StandFrictionThreshold = mov.GetFloat("stand.friction.threshold", c.StandFrictionThreshold);
                 c.CrouchFrictionThreshold = mov.GetFloat("crouch.friction.threshold", c.CrouchFrictionThreshold);
+                c.AirGetHitGroundLevel = mov.GetFloat("air.gethit.groundlevel", c.AirGetHitGroundLevel);
+                c.AirGetHitGroundRecoverGroundThreshold =
+                    mov.GetFloat("air.gethit.groundrecover.ground.threshold", c.AirGetHitGroundRecoverGroundThreshold);
+                c.AirGetHitGroundRecoverGroundLevel =
+                    mov.GetFloat("air.gethit.groundrecover.groundlevel", c.AirGetHitGroundRecoverGroundLevel);
+                c.AirGetHitAirRecoverThreshold =
+                    mov.GetFloat("air.gethit.airrecover.threshold", c.AirGetHitAirRecoverThreshold);
+                c.AirGetHitAirRecoverYAccel =
+                    mov.GetFloat("air.gethit.airrecover.yaccel", c.AirGetHitAirRecoverYAccel);
+                c.AirGetHitTripGroundLevel = mov.GetFloat("air.gethit.trip.groundlevel", c.AirGetHitTripGroundLevel);
+                Pair(mov.Get("down.bounce.offset"), ref c.DownBounceOffsetX, ref c.DownBounceOffsetY);
+                c.DownBounceYAccel = mov.GetFloat("down.bounce.yaccel", c.DownBounceYAccel);
+                c.DownBounceGroundLevel = mov.GetFloat("down.bounce.groundlevel", c.DownBounceGroundLevel);
+                c.DownFrictionThreshold = mov.GetFloat("down.friction.threshold", c.DownFrictionThreshold);
             }
             return c;
         }
