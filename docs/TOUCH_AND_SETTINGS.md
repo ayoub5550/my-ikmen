@@ -79,7 +79,8 @@ Landscape only. Reference 1280×720, all values in reference units, centres.
 | Fixed stick | Stick at the D-pad position; same quantisation. | |
 
 - The whole left 45 % of the screen (outside buttons) is the direction zone, so a missed
-  thumb still steers (mode-dependent).
+  thumb still steers (mode-dependent). dev.7: up to 78 % of the height — the controls are now
+  drawn above the screens, so the top strip is left to the HUD / menu buttons.
 - Direction output passes through SOCD resolution, then into `InputFrame`.
 - Optional **haptic tick** (short vibration) when the direction sector changes.
 

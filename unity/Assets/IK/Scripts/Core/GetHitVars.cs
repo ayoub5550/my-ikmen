@@ -72,7 +72,7 @@ namespace IK.Core {
         public bool TryGet(string name, out float value) {
             value = 0f;
             if (string.IsNullOrEmpty(name)) return false;
-            switch (name.Trim().ToLowerInvariant()) {
+            switch (name.Trim().Lc()) {
                 case "animtype": value = (int)AnimType; return true;
                 case "air.animtype": value = (int)AnimType; return true;
                 case "ground.animtype": value = (int)AnimType; return true;

@@ -57,7 +57,7 @@ namespace IK.Input {
             // 1. latch everything seen between ticks (touch taps shorter than a tick count)
             latched = latched.Or(SampleRaw());
             // 2. advance logic ticks
-            accumulator += Time.unscaledDeltaTime;
+            accumulator += SnapDelta(Time.unscaledDeltaTime, TickRate);
             float step = 1f / TickRate;
             int guard = 0;
             while (accumulator >= step && guard++ < 8) {
@@ -66,6 +66,25 @@ namespace IK.Input {
             }
             UpdateDeviceVisibility();
             SettingsStore.Tick();
+        }
+
+        /// <summary>
+        /// dev.7 frame pacing: a frame time within 2 ms of a whole number of display
+        /// frames at the tick rate (1/60, 2/60 …, or 1/120 on a 120 Hz panel) is treated as exactly
+        /// that. Without it the jitter of a 16.4 / 16.9 ms frame makes the accumulator run 0 or 2
+        /// logic ticks in some frames — a visible stutter in a game that moves every tick.
+        /// </summary>
+        public static float SnapDelta(float dt, float tickRate) {
+            if (dt <= 0f) return 0f;
+            float step = 1f / tickRate;
+            const float tolerance = 0.002f;
+            for (int k = 1; k <= 4; k++) {
+                float target = step * k;
+                if (Mathf.Abs(dt - target) < tolerance) return target;
+            }
+            float half = step * 0.5f;                     // 120 Hz panels
+            if (Mathf.Abs(dt - half) < tolerance * 0.5f) return half;
+            return Mathf.Min(dt, 0.25f);
         }
 
         InputFrame SampleRaw() {

@@ -46,6 +46,11 @@ namespace IK.UI {
         public bool PausedByPlayer { get; private set; }
         /// <summary>Sprites drawn in the last frame (rendered checks).</summary>
         public int DrawnSprites { get; private set; }
+        /// <summary>dev.7: the benchmark advances the fight itself (one tick per frame).</summary>
+        public bool ExternalDrive;
+        /// <summary>dev.7: sprites built during the last load (no first-use stalls in the fight).</summary>
+        public int PrewarmedSprites { get; private set; }
+        public double PrewarmMilliseconds { get; private set; }
 
         /// <summary>What player 2 does in the dev.4 dummy fight / training: 0 stand, 1 guard,
         /// 2 jump, 3 walk towards player 1, 4 CPU.</summary>
@@ -80,6 +85,9 @@ namespace IK.UI {
         bool resultSent;
         int trainingIdle;
         Shader palShader;
+        GameObject backButton, hudPause;
+        bool lastPauseKey;
+        object lastStage;
 
         public float Scale { get; private set; } = 2.6f;
         public float FloorY { get; private set; } = 92f;
@@ -96,6 +104,9 @@ namespace IK.UI {
 
             stageRect = UIKit.Panel(Root, "stage", new Vector2(0f, 0f), new Vector2(1f, 1f),
                                     new Vector2(0, 0), new Vector2(0, -60));
+            // dev.7: the stage and the sprites change every tick; a nested canvas keeps their
+            // re-batching apart from the HUD and menus (draw order is unchanged)
+            stageRect.gameObject.AddComponent<Canvas>();
             bgBack = UIKit.Panel(stageRect, "bgBack", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             floorLine = UIKit.Image(stageRect, "floor", new Vector2(0.5f, 0f), new Vector2(0, FloorY - 2),
                                     new Vector2(4000, 4), null, new Color(1f, 1f, 1f, 0.18f));
@@ -159,16 +170,16 @@ namespace IK.UI {
             debugLine = UIKit.Text(Root, "hud", new Vector2(0f, 0f), new Vector2(330, 40), new Vector2(900, 26),
                              "", 18, TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.55f));
 
-            UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(90, -140), new Vector2(150, 54),
-                         Loc.T("common.back"), OnBackPressed, 22);
+            backButton = UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(90, -140), new Vector2(150, 54),
+                         Loc.T("common.back"), OnBackPressed, 22).gameObject;
             devButtons.Add(UIKit.Button(Root, "Rematch", new Vector2(1f, 1f), new Vector2(-90, -140), new Vector2(170, 54),
                          Loc.T("fight.rematch"), Rematch, 22).gameObject);
             devButtons.Add(UIKit.Button(Root, "Dummy", new Vector2(1f, 1f), new Vector2(-270, -140), new Vector2(170, 54),
                          Loc.T("fight.dummy"), CycleDummy, 22).gameObject);
             devButtons.Add(UIKit.Button(Root, "Boxes", new Vector2(1f, 1f), new Vector2(-450, -140), new Vector2(150, 54),
                          Loc.T("viewer.boxes"), () => { showBoxes = !showBoxes; Redraw(); }, 22).gameObject);
-            UIKit.Button(Root, "Pause", new Vector2(0.5f, 1f), new Vector2(0, -110), new Vector2(110, 48),
-                         "II", TogglePause, 24);
+            hudPause = UIKit.Button(Root, "Pause", new Vector2(0.5f, 1f), new Vector2(0, -110), new Vector2(110, 48),
+                         "II", TogglePause, 24).gameObject;
             // dev.6 teams: who is left on each side, and the tag button (the `w` key)
             teamLine = UIKit.Text(Root, "teamLine", new Vector2(0.5f, 1f), new Vector2(0, -150), new Vector2(900, 30),
                                   "", 22, TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.6f, 0.95f));
@@ -197,6 +208,14 @@ namespace IK.UI {
             SetVisible(false);
         }
 
+        /// <summary>Back / II plates only where they are needed (dev fight, training, no touch).</summary>
+        public void UpdateMatchButtons() {
+            bool touch = IK.Input.TouchControls.Instance != null && IK.Input.TouchControls.Instance.Visible;
+            bool training = Setup != null && Setup.Mode == GameMode.Training;
+            if (backButton != null) backButton.SetActive(Setup == null || training);
+            if (hudPause != null) hudPause.SetActive(Setup != null && !touch);
+        }
+
         void OnBackPressed() {
             if (Setup != null) { TogglePause(); return; }
             onBack?.Invoke();
@@ -204,6 +223,12 @@ namespace IK.UI {
 
         public void TogglePause() {
             PausedByPlayer = !PausedByPlayer;
+            // dev.7: the controls are drawn above the screens; hide them under the pause menu
+            var router = IK.Input.InputRouter.Instance;
+            if (router != null && Visible) {
+                router.allowTouchControls = !PausedByPlayer;
+                if (router.touch != null) router.touch.SetVisible(!PausedByPlayer);
+            }
             if (pausePanel != null) {
                 pausePanel.gameObject.SetActive(PausedByPlayer);
                 pausePanel.SetAsLastSibling();
@@ -213,6 +238,7 @@ namespace IK.UI {
         void ExitFight() {
             PausedByPlayer = false;
             if (pausePanel != null) pausePanel.gameObject.SetActive(false);
+            if (IK.Input.InputRouter.Instance != null) IK.Input.InputRouter.Instance.allowTouchControls = true;
             StopAllSounds();
             if (onMatchEnd != null && !resultSent) {
                 resultSent = true;
@@ -304,6 +330,12 @@ namespace IK.UI {
                 Fight = sharedFight;
 
                 if (stageRenderer != null) { stageRenderer.Dispose(); stageRenderer = null; }
+                // dev.7: the previous stage's textures were never released (one set per match)
+                if (lastStage != null && caches.TryGetValue(lastStage, out var oldStageCache)) {
+                    oldStageCache.Dispose();
+                    caches.Remove(lastStage);
+                }
+                lastStage = Stage;
                 if (Stage != null && Stage.Sprites != null && bgBack != null) {
                     var stageCache = new MugenAssetCache();
                     caches[Stage] = stageCache;
@@ -368,6 +400,7 @@ namespace IK.UI {
                         if (m != f && m.AiLevel > 0) aiByFighter[m] = new CpuAI(m, m.AiLevel, seed += 2);
                 }
                 if (tagButton != null) tagButton.SetActive(Engine.Teams == TeamMode.Tag && Engine.Team[0].Count > 1 && Engine.P1.AiLevel == 0);
+                Prewarm();
                 Ticks = 0;
                 resultSent = false;
             } catch (Exception e) {
@@ -378,6 +411,57 @@ namespace IK.UI {
             watch.Stop();
             LoadMilliseconds = watch.Elapsed.TotalMilliseconds;
             return Engine != null;
+        }
+
+        /// <summary>
+        /// dev.7: builds every sprite the fighters' animations (and the common hit sparks) can
+        /// show, with each fighter's palette, while the load screen is up — so the first
+        /// fireball or super of a match no longer stalls a frame on texture creation and upload.
+        /// Characters are cached between matches, so a rematch costs nothing here.
+        /// </summary>
+        void Prewarm() {
+            prewarmQueue.Clear();
+            PrewarmedSprites = 0;
+            PrewarmMilliseconds = 0;
+            var fighters = new List<Fighter> { Engine.Players[0], Engine.Players[1] };
+            for (int side = 0; side < 2; side++) foreach (var m in Engine.Team[side]) if (!fighters.Contains(m)) fighters.Add(m);
+            var seen = new HashSet<long>();
+            foreach (var f in fighters) {
+                var chr = f?.Character;
+                if (chr == null || chr.Sff == null || chr.Air == null) continue;
+                var cache = CacheFor(chr.Sff);
+                var pal = PaletteOf(f);
+                seen.Clear();
+                foreach (var a in chr.Air.Actions.Values)
+                    foreach (var fr in a.Frames)
+                        if (fr.Group >= 0 && seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff)))
+                            prewarmQueue.Enqueue(new MugenAssetCache.PrewarmItem { Cache = cache, Sff = chr.Sff, GroupNumber = ((long)fr.Group << 16) | (uint)(fr.Number & 0xffff), Palette = pal });
+            }
+            if (fxAir != null && fxSff != null) {
+                var cache = CacheFor(fxSff);
+                seen.Clear();
+                foreach (var a in fxAir.Actions.Values)
+                    foreach (var fr in a.Frames)
+                        if (fr.Group >= 0 && seen.Add(((long)fr.Group << 16) | (uint)(fr.Number & 0xffff)))
+                            prewarmQueue.Enqueue(new MugenAssetCache.PrewarmItem { Cache = cache, Sff = fxSff, GroupNumber = ((long)fr.Group << 16) | (uint)(fr.Number & 0xffff) });
+            }
+            // a first slice now (the load screen is up anyway), the rest a few ms per frame
+            // during the round intro — no long freeze after the VS screen
+            PrewarmTick(PrewarmLoadBudgetMs);
+        }
+
+        /// <summary>Milliseconds of sprite building at load / per tick (dev.7).</summary>
+        public static double PrewarmLoadBudgetMs = 250, PrewarmTickBudgetMs = 3;
+        public bool PrewarmDone => prewarmQueue.Count == 0;
+        readonly Queue<MugenAssetCache.PrewarmItem> prewarmQueue = new Queue<MugenAssetCache.PrewarmItem>();
+
+        void PrewarmTick(double budget) {
+            if (prewarmQueue.Count == 0) return;
+            double t0 = IK.App.PerfMonitor.Now;
+            int made = PrewarmedSprites;
+            MugenAssetCache.PrewarmStep(prewarmQueue, budget, ref made);
+            PrewarmedSprites = made;
+            PrewarmMilliseconds += IK.App.PerfMonitor.Now - t0;
         }
 
         /// <summary>dev.6: loads the partners of both sides and hands the teams to the engine.</summary>
@@ -430,6 +514,9 @@ namespace IK.UI {
             DummyMode = setup.Players[1].AiLevel > 0 ? 4 : 0;
             bool training = setup.Mode == GameMode.Training;
             foreach (var b in devButtons) b.SetActive(training);
+            // dev.7: in a match the touch pause button / Android back pause the game; the old
+            // HUD "Back" and centre "II" plates overlapped the motif lifebars and timer
+            UpdateMatchButtons();
             Root.gameObject.SetActive(true);
             if (hud != null) hud.SetVisible(true);
             Redraw();
@@ -460,8 +547,16 @@ namespace IK.UI {
 
         /// <summary>One logic tick, called by <see cref="InputRouter"/> at 60 Hz.</summary>
         public void Feed(InputFrame frame) {
+            // dev.7: the on-screen pause button (`m`) and START pause a match; before it did nothing
+            bool pauseKey = frame.m;
+            if (pauseKey && !lastPauseKey && Setup != null) TogglePause();
+            lastPauseKey = pauseKey;
+            UpdateMatchButtons();
             if (Engine == null || PausedByPlayer) return;
-            var keys = new CmdKey[2];
+            double t0 = IK.App.PerfMonitor.Now;
+            long heap0 = IK.App.PerfMonitor.HeapUsed;
+            var keys = feedKeys;
+            keys[0] = keys[1] = CmdKey.None;
             for (int i = 0; i < 2; i++) {
                 // the member on the field may have changed (tag / turns): use its own brain
                 if (Engine.Teams != TeamMode.Single && aiByFighter.TryGetValue(Engine.Players[i], out var brain)) Ai[i] = brain;
@@ -483,9 +578,16 @@ namespace IK.UI {
                 Handheld.Vibrate();
 #endif
             }
+            double t1 = IK.App.PerfMonitor.Now;
+            IK.App.PerfMonitor.AddLogic(t1 - t0);
             Redraw();
+            IK.App.PerfMonitor.AddDraw(IK.App.PerfMonitor.Now - t1);
+            IK.App.PerfMonitor.AddFightAlloc(IK.App.PerfMonitor.HeapUsed - heap0);
+            PrewarmTick(PrewarmTickBudgetMs);
             CheckMatchEnd();
         }
+
+        readonly CmdKey[] feedKeys = new CmdKey[2];
 
         void TrainingRefill() {
             for (int i = 0; i < 2; i++) {
@@ -611,15 +713,20 @@ namespace IK.UI {
             darken.enabled = Engine.SuperPauseTime > 0 && Engine.SuperPauseDarken;
 
             int used = 0;
-            foreach (var item in Engine.DrawList()) {
+            layerIndexSprite = layerIndexOverlay = 0;
+            var drawList = Engine.DrawList(drawItems);
+            for (int di = 0; di < drawList.Count; di++) {
+                var item = drawList[di];
                 var f = item as Fighter;
                 if (f != null) {
                     // afterimage trail first, behind the character
                     if (f.After.Frames.Count > 0) {
-                        foreach (var kv in f.After.Visible()) {
-                            var ai = kv.Value;
-                            float k = 1f - kv.Key / (float)Mathf.Max(2, f.After.Length / Mathf.Max(1, f.After.FrameGap) + 1);
-                            var fx = AfterImageFx(f.After, kv.Key);
+                        int gap = Math.Max(1, f.After.FrameGap);
+                        for (int fi = gap; fi < f.After.Frames.Count; fi += gap) {
+                            int step = fi / gap;
+                            var ai = f.After.Frames[fi];
+                            float k = 1f - step / (float)Mathf.Max(2, f.After.Length / Mathf.Max(1, f.After.FrameGap) + 1);
+                            var fx = AfterImageFx(f.After, step);
                             used = DrawSprite(used, spriteLayer, SpriteOwnerChar(f), PaletteOf(f), ai.Frame, ai.PosX * f.Scl, ai.PosY * f.Scl,
                                               ai.Facing, 1, f.Scl, f.Scl, ai.Angle, f.After.Trans, (int)(200 * k), 255, fx, camera, false);
                         }
@@ -665,6 +772,21 @@ namespace IK.UI {
             DrawBars();
             DrawAnnouncement();
         }
+
+        readonly List<object> drawItems = new List<object>();
+        int layerIndexSprite, layerIndexOverlay;
+
+        static readonly int IdSrc = Shader.PropertyToID("_SrcBlend"), IdDst = Shader.PropertyToID("_DstBlend"),
+                            IdOp = Shader.PropertyToID("_BlendOp"), IdPremul = Shader.PropertyToID("_Premul"),
+                            IdAdd = Shader.PropertyToID("_Add"), IdMul = Shader.PropertyToID("_Mul"),
+                            IdSat = Shader.PropertyToID("_Sat"), IdInvert = Shader.PropertyToID("_Invert");
+
+        /// <summary>dev.7: what each pooled sprite's material was last set to (skip redundant sets).</summary>
+        class SlotState {
+            public int Src = -1, Dst = -1, Op = -1; public float Premul = -1f, Sat = -1f, Invert = -1f;
+            public Vector4 Add = new Vector4(-9, -9, -9, -9), Mul = new Vector4(-9, -9, -9, -9);
+        }
+        readonly List<SlotState> slotStates = new List<SlotState>();
 
         MugenCharacter SpriteOwnerChar(Fighter f) {
             if (f == null) return null;
@@ -727,7 +849,8 @@ namespace IK.UI {
             if (unitySprite == null) return used;
 
             Image img;
-            if (used < spritePool.Count) img = spritePool[used];
+            SlotState st;
+            if (used < spritePool.Count) { img = spritePool[used]; st = slotStates[used]; }
             else {
                 var go = new GameObject("spr" + used, typeof(RectTransform));
                 img = go.AddComponent<Image>();
@@ -736,10 +859,15 @@ namespace IK.UI {
                 rt0.anchorMin = rt0.anchorMax = new Vector2(0.5f, 0f);
                 if (palShader != null) img.material = new Material(palShader);
                 spritePool.Add(img);
+                slotStates.Add(st = new SlotState());
             }
-            if (img.transform.parent != layer) img.transform.SetParent(layer, false);
-            img.transform.SetAsLastSibling();
-            img.gameObject.SetActive(true);
+            var tr = img.transform;
+            if (tr.parent != layer) tr.SetParent(layer, false);
+            // draw order = sibling order; only move a sprite when it is out of place (a sibling
+            // change re-sorts the whole canvas, SetAsLastSibling on every sprite did it each tick)
+            int want = layer == overlayLayer ? layerIndexOverlay++ : layerIndexSprite++;
+            if (tr.GetSiblingIndex() != want) tr.SetSiblingIndex(want);
+            if (!img.gameObject.activeSelf) img.gameObject.SetActive(true);
             img.sprite = unitySprite;
             var rt = img.rectTransform;
             rt.sizeDelta = new Vector2(spr.Width * Scale, spr.Height * Scale);
@@ -778,15 +906,20 @@ namespace IK.UI {
             }
             img.color = new Color(1f, 1f, 1f, alpha);
             var mat = img.material;
-            if (mat != null && mat.shader == palShader) {
-                mat.SetFloat("_SrcBlend", src);
-                mat.SetFloat("_DstBlend", dst);
-                mat.SetFloat("_BlendOp", op);
-                mat.SetFloat("_Premul", premul ? 1f : 0f);
-                mat.SetVector("_Add", fx.Any ? fx.Add : Vector4.zero);
-                mat.SetVector("_Mul", fx.Any ? fx.Mul : Vector4.one);
-                mat.SetFloat("_Sat", fx.Any ? fx.Sat : 1f);
-                mat.SetFloat("_Invert", fx.Any && fx.Invert ? 1f : 0f);
+            if (mat != null && palShader != null) {
+                float pm = premul ? 1f : 0f;
+                var add = fx.Any ? fx.Add : Vector4.zero;
+                var mul = fx.Any ? fx.Mul : Vector4.one;
+                float sat = fx.Any ? fx.Sat : 1f;
+                float inv = fx.Any && fx.Invert ? 1f : 0f;
+                if (st.Src != src) { mat.SetFloat(IdSrc, src); st.Src = src; }
+                if (st.Dst != dst) { mat.SetFloat(IdDst, dst); st.Dst = dst; }
+                if (st.Op != op) { mat.SetFloat(IdOp, op); st.Op = op; }
+                if (st.Premul != pm) { mat.SetFloat(IdPremul, pm); st.Premul = pm; }
+                if (st.Add != add) { mat.SetVector(IdAdd, add); st.Add = add; }
+                if (st.Mul != mul) { mat.SetVector(IdMul, mul); st.Mul = mul; }
+                if (st.Sat != sat) { mat.SetFloat(IdSat, sat); st.Sat = sat; }
+                if (st.Invert != inv) { mat.SetFloat(IdInvert, inv); st.Invert = inv; }
             }
             return used + 1;
         }

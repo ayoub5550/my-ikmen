@@ -22,3 +22,9 @@ Their original licence files are kept unchanged next to them.
 `unity/Assets/IK/Resources/music/*.ogg` are **original** tracks synthesised by
 `tools/music/compose.py` from code (oscillators, noise and a seeded melody generator; no samples
 or third-party recordings). They are part of this project and covered by its MIT licence.
+
+## Fonts (dev.7)
+
+| Font | Source | Licence |
+| --- | --- | --- |
+| `unity/Assets/IK/Resources/fonts/Rubik-Bold.ttf` — button labels | https://github.com/google/fonts `ofl/rubik` (variable font instanced at wght 700 with fontTools) | SIL Open Font License 1.1 — `docs/licenses/Rubik-OFL.txt`; commercial use allowed |

@@ -63,7 +63,9 @@ namespace IK.App {
             UnityEngine.Screen.sleepTimeout = SleepTimeout.NeverSleep;
             AudioListener.volume = s.masterVolume / 100f;
 
-            TouchCanvas = UIKit.CreateCanvas("TouchCanvas", 5);
+            // dev.7: the controls sit ABOVE the screens. Before, the opaque fight / training panels of
+            // the UI canvas (order 10) covered them: they still worked but were invisible in a match.
+            TouchCanvas = UIKit.CreateCanvas("TouchCanvas", 20);
             UiCanvas = UIKit.CreateCanvas("UICanvas", 10);
             DontDestroyOnLoad(gameObject);
 
@@ -75,6 +77,8 @@ namespace IK.App {
             Gamepad = gameObject.AddComponent<GamepadInput>();
             Router = gameObject.AddComponent<InputRouter>();
             Music = gameObject.AddComponent<MusicPlayer>();
+            gameObject.AddComponent<PerfMonitor>();
+            RenderQuality.Apply(s);
             Router.touch = Touch;
             Router.gamepad = Gamepad;
             Router.Configure(s);
@@ -177,6 +181,34 @@ namespace IK.App {
             }
         }
 
+        // ------------------------------------------------------------------ dev.7 benchmark
+
+        Screen_ benchReturn = Screen_.Settings;
+
+        /// <summary>Options → Video → Benchmark.</summary>
+        public void RunBenchmark() {
+            if (Benchmark.Running) return;
+            benchReturn = Current;
+            Benchmark.Run(this);
+        }
+
+        /// <summary>Shows the fight screen with a match that is not part of a game flow.</summary>
+        public void ShowFightForBenchmark(MatchSetup setup, System.Action<MatchResult> onEnd) {
+            InFlowMatch = false;
+            Fight.StartMatch(setup, onEnd);
+            Show(Screen_.Fight);
+        }
+
+        public void EndBenchmark() {
+            Fight.ClearMatch();
+            Show(benchReturn == Screen_.Fight ? Screen_.Title : benchReturn);
+        }
+
+        public void OpenSettingsPage(string page) {
+            if (Current != Screen_.Settings) OpenSettings(Screen_.Title);
+            Settings.ShowPage(page);
+        }
+
         void OpenSettings(Screen_ back) {
             settingsReturn = back;
             Show(Screen_.Settings);
@@ -272,7 +304,7 @@ namespace IK.App {
         public void RebuildTouch() {
             var s = SettingsStore.Current;
             Loc.Apply(s.language);
-            Application.targetFrameRate = s.fpsCap;
+            RenderQuality.Apply(s);
             AudioListener.volume = s.masterVolume / 100f;
             Touch.Build((RectTransform)TouchCanvas.transform, s);
             Router.Configure(s);
@@ -325,7 +357,7 @@ namespace IK.App {
         void OnTick(InputFrame frame) {
             if (Current == Screen_.InputTest) Display.Feed(frame, Router.TickCount);
             else if (Current == Screen_.Training) Training.Feed(frame);
-            else if (Current == Screen_.Fight) Fight.Feed(frame);
+            else if (Current == Screen_.Fight) { if (!Fight.ExternalDrive) Fight.Feed(frame); }
             else {
                 var fe = FrontEnd(Current);
                 if (fe != null) fe.Feed(frame);

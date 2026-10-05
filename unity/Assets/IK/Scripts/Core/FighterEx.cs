@@ -263,7 +263,7 @@ namespace IK.Core {
                     return true;
                 case "mapset":
                 case "mapadd": {
-                    string key = MugenDef.Unquote(c.Get("map")).Trim().ToLowerInvariant();
+                    string key = MugenDef.Unquote(c.Get("map")).Trim().Lc();
                     float v = ParamFloat(c, "value", 0f);
                     var target = ParamInt(c, "type", 0) == 1 ? Root : this;
                     float old;
@@ -424,7 +424,7 @@ namespace IK.Core {
                         var pos = EvalPair(c, "pos", 0, 0);
                         string anchor = "foot";
                         var parts = MugenDef.SplitCsv(c.Get("pos"));
-                        if (parts.Length > 2) anchor = parts[2].Trim().ToLowerInvariant();
+                        if (parts.Length > 2) anchor = parts[2].Trim().Lc();
                         float y = t.WorldY + pos[1] * Scl;
                         if (anchor == "head") y -= t.Const.Height * t.Scl;
                         else if (anchor == "mid") y -= t.Const.Height * t.Scl / 2f;
@@ -561,7 +561,7 @@ namespace IK.Core {
                 if (idx >= 0 && idx < FVars.Length) FVars[idx] = add ? FVars[idx] + value : value;
             } else {
                 foreach (var kv in c.Params) {
-                    string key = kv.Key.Trim().ToLowerInvariant();
+                    string key = kv.Key.Trim().Lc();
                     bool isF = key.StartsWith("fvar(");
                     if (!isF && !key.StartsWith("var(")) continue;
                     int open = key.IndexOf('('), close = key.IndexOf(')');
@@ -574,7 +574,7 @@ namespace IK.Core {
         }
 
         public static TransType ParseTrans(string s) {
-            switch ((s ?? "").Trim().ToLowerInvariant()) {
+            switch ((s ?? "").Trim().Lc()) {
                 case "none": return TransType.None;
                 case "add": return TransType.Add;
                 case "addalpha": return TransType.Add;
@@ -610,13 +610,13 @@ namespace IK.Core {
             var h = Engine.CreateHelper(this, id, stateNo, hh => {
                 hh.HelperName = MugenDef.Unquote(c.Get("name", ""));
                 hh.KeyCtrl = ParamInt(c, "keyctrl", 0) != 0;
-                hh.HelperIsPlayer = c.Get("helpertype", "normal").Trim().ToLowerInvariant() == "player";
+                hh.HelperIsPlayer = c.Get("helpertype", "normal").Trim().Lc() == "player";
                 hh.PauseMoveTime = ParamInt(c, "pausemovetime", 0);
                 hh.SuperMoveTime = ParamInt(c, "supermovetime", 0);
                 if (hh.KeyCtrl) hh.SharedCommands = Root.Commands;
                 int facing = ParamInt(c, "facing", 1);
                 var pos = EvalPair(c, "pos", 0, 0);
-                string postype = c.Get("postype", "p1").Trim().ToLowerInvariant();
+                string postype = c.Get("postype", "p1").Trim().Lc();
                 PlaceRelative(postype, pos[0], pos[1], facing, out hh.PosX, out hh.PosY, out hh.Facing);
                 if (c.Has("size.xscale") || c.Has("size.ground.front") || c.Has("size.height") || c.Has("size.ground.back")) {
                     var cc = (CharConstants)Const.Clone();
@@ -686,7 +686,7 @@ namespace IK.Core {
             e.Source = ParseAnimRef(c.Get("anim", "0"), out no);
             e.AnimNo = no;
             e.Id = ParamInt(c, "id", -1);
-            e.PosType = c.Get("postype", "p1").Trim().ToLowerInvariant();
+            e.PosType = c.Get("postype", "p1").Trim().Lc();
             var pos = EvalPair(c, "pos", 0, 0);
             e.OffX = pos[0]; e.OffY = pos[1];
             int facingParam = ParamInt(c, "facing", 1);
@@ -767,7 +767,7 @@ namespace IK.Core {
             if (c.Has("projcancelanim")) { p.CancelSource = ParseAnimRef(c.Get("projcancelanim"), out no); p.CancelAnim = no; }
             else { p.CancelSource = p.RemSource; p.CancelAnim = p.RemAnim; }
             var off = EvalPair(c, "offset", 0, 0);
-            string postype = c.Get("postype", "p1").Trim().ToLowerInvariant();
+            string postype = c.Get("postype", "p1").Trim().Lc();
             PlaceRelativeWorld(postype, off[0], off[1], 1, out p.PosX, out p.PosY, out p.Facing);
             var vel = EvalPair(c, "velocity", 0, 0);
             p.VelX = vel[0] * Scl; p.VelY = vel[1] * Scl;
@@ -866,7 +866,7 @@ namespace IK.Core {
                 case "rootdist x": value = (Root.PosX - PosX) * Facing; return true;
                 case "rootdist y": value = Root.PosY - PosY; return true;
                 case "teamside": value = PlayerNo + 1; return true;
-                case "teammode": value = arg == null ? 0 : (arg.Trim().ToLowerInvariant() == "single" ? 1 : 0); return true;
+                case "teammode": value = arg == null ? 0 : (arg.Trim().Lc() == "single" ? 1 : 0); return true;
                 case "name": value = StrEq(arg, Character != null ? Character.Name : ""); return true;
                 case "p1name": value = StrEq(arg, Root.Character != null ? Root.Character.Name : ""); return true;
                 case "p2name": {
@@ -883,7 +883,7 @@ namespace IK.Core {
                 case "mugenversion": {
                     string mv = Character != null ? Character.MugenVersion ?? "" : "";
                     float major = mv.StartsWith("1") ? 1 : mv.Length == 0 ? 1 : 0;
-                    value = arg != null && arg.Trim().ToLowerInvariant() == "minor" ? (mv.StartsWith("1.1") ? 1 : 0) : major;
+                    value = arg != null && arg.Trim().Lc() == "minor" ? (mv.StartsWith("1.1") ? 1 : 0) : major;
                     return true;
                 }
                 case "const240p": value = argValue * (Character != null ? Character.LocalCoordHeight / 240f : 1f); return true;
@@ -892,7 +892,7 @@ namespace IK.Core {
                 case "const1080p": value = argValue * (Character != null ? Character.LocalCoordHeight / 1080f : 0.25f); return true;
                 case "map": {
                     float v;
-                    value = arg != null && Maps.TryGetValue(arg.Trim().ToLowerInvariant(), out v) ? v : 0f;
+                    value = arg != null && Maps.TryGetValue(arg.Trim().Lc(), out v) ? v : 0f;
                     return true;
                 }
                 case "ishometeam": value = PlayerNo == 0 ? 1 : 0; return true;
@@ -958,7 +958,7 @@ namespace IK.Core {
         float ConstFromHeader(string key) {
             var hdr = States != null ? States.Header : null;
             if (hdr == null || string.IsNullOrEmpty(key)) return 0f;
-            string k = key.ToLowerInvariant();
+            string k = key.Lc();
             int dot = k.IndexOf('.');
             if (dot <= 0) return 0f;
             string section = k.Substring(0, dot);

@@ -148,6 +148,8 @@ namespace IK.UI {
         // ---------- pages ----------
         void BuildControls(RectTransform page) {
             StartRows();
+            Choice(page, Loc.T("ctl.style"), new[] { Loc.T("ctl.styleModern"), Loc.T("ctl.styleClassic") },
+                   () => S.buttonStyle, v => S.buttonStyle = v);
             Choice(page, Loc.T("ctl.directionMode"),
                    new[] { Loc.T("ctl.dpad"), Loc.T("ctl.floating"), Loc.T("ctl.fixed") },
                    () => (int)S.directionMode, v => S.directionMode = (DirectionMode)v);
@@ -178,6 +180,7 @@ namespace IK.UI {
                          Loc.T("ctl.editLayout"), () => onEditLayout?.Invoke(), 24);
             ResetRow(page, () => {
                 var d = new GameSettings();
+                S.buttonStyle = d.buttonStyle;
                 S.directionMode = d.directionMode; S.buttonSize = d.buttonSize; S.controlsOpacity = d.controlsOpacity;
                 S.slideToPress = d.slideToPress; S.macroButtons = d.macroButtons; S.showDW = d.showDW;
                 S.haptics = d.haptics; S.onScreenControls = d.onScreenControls; S.buttonAssist = d.buttonAssist;
@@ -227,9 +230,12 @@ namespace IK.UI {
                    v => { S.fpsCap = v == 0 ? 30 : 60; Application.targetFrameRate = S.fpsCap; });
             SliderRow(page, Loc.T("video.renderScale"), 50, 100, () => S.renderScale, v => S.renderScale = Mathf.RoundToInt(v),
                       v => Mathf.RoundToInt(v) + " %", 10);
-            Choice(page, Loc.T("video.filter"), new[] { Loc.T("video.sharp"), Loc.T("video.smooth") },
+            Choice(page, Loc.T("video.filter"), new[] { Loc.T("video.sharp"), Loc.T("video.smooth"), Loc.T("video.crisp") },
                    () => (int)S.pixelFilter, v => S.pixelFilter = (PixelFilter)v);
             Switch(page, Loc.T("video.showFps"), () => S.showFps, v => S.showFps = v);
+            var bench = Row(page, Loc.T("video.benchmark"));
+            UIKit.Button(bench, "benchmark", new Vector2(1f, 0.5f), new Vector2(-150, 0), new Vector2(280, 68),
+                         Loc.T("video.run"), () => IK.App.IKApp.Instance?.RunBenchmark(), 24);
             ResetRow(page, () => {
                 var d = new GameSettings();
                 S.fpsCap = d.fpsCap; S.renderScale = d.renderScale; S.pixelFilter = d.pixelFilter; S.showFps = d.showFps;

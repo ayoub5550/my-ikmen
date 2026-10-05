@@ -53,8 +53,9 @@ namespace IK.Settings {
             l.controls.Add(new ControlPlacement { id = ControlId.LK, anchor = new Vector2(1, 0), position = new Vector2(-370, 105), size = 130 });
             l.controls.Add(new ControlPlacement { id = ControlId.MK, anchor = new Vector2(1, 0), position = new Vector2(-225, 135), size = 130 });
             l.controls.Add(new ControlPlacement { id = ControlId.HK, anchor = new Vector2(1, 0), position = new Vector2(-80, 165), size = 130 });
-            l.controls.Add(new ControlPlacement { id = ControlId.Start, anchor = new Vector2(0.5f, 1), position = new Vector2(0, -64), size = 100 });
-            l.controls.Add(new ControlPlacement { id = ControlId.Pause, anchor = new Vector2(1, 1), position = new Vector2(-64, -64), size = 100 });
+            // dev.7: START / pause below the motif lifebars (top centre covered the round timer)
+            l.controls.Add(new ControlPlacement { id = ControlId.Start, anchor = new Vector2(1, 1), position = new Vector2(-250, -205), size = 100 });
+            l.controls.Add(new ControlPlacement { id = ControlId.Pause, anchor = new Vector2(1, 1), position = new Vector2(-80, -205), size = 100 });
             l.controls.Add(new ControlPlacement { id = ControlId.D, anchor = new Vector2(1, 0), position = new Vector2(-510, 150), size = 110, visible = false });
             l.controls.Add(new ControlPlacement { id = ControlId.W, anchor = new Vector2(1, 0), position = new Vector2(-510, 285), size = 110, visible = false });
             l.controls.Add(new ControlPlacement { id = ControlId.MacroXY, anchor = new Vector2(1, 0), position = new Vector2(-150, 440), size = 110, visible = false });
