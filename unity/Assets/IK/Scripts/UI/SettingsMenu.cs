@@ -1,0 +1,258 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using IK.Settings;
+
+namespace IK.UI {
+    /// <summary>
+    /// The settings screen: a page strip (Controls / Game / Audio / Video / Language /
+    /// About) and big touch rows (≥96 reference units). Every change is applied live and
+    /// persisted immediately (debounced by <see cref="SettingsStore"/>).
+    /// </summary>
+    public class SettingsMenu : MonoBehaviour {
+        public RectTransform Root { get; private set; }
+        public string CurrentPage { get; private set; } = "Controls";
+        public Action onBack;
+        public Action onEditLayout;
+        public Action onChanged;              // so the touch layer can rebuild live
+
+        static readonly string[] Pages = { "Controls", "Game", "Audio", "Video", "Language", "About" };
+        readonly Dictionary<string, RectTransform> pageRoots = new Dictionary<string, RectTransform>();
+        readonly Dictionary<string, Button> pageButtons = new Dictionary<string, Button>();
+        RectTransform content;
+        GameSettings S => SettingsStore.Current;
+        float rowY;
+
+        public void Build(RectTransform parent) {
+            Root = UIKit.Panel(parent, "Settings", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+                               new Color(0.04f, 0.05f, 0.08f, 0.96f));
+            UIKit.Text(Root, "title", new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(600, 56),
+                       Loc.T("menu.settings"), 36, TextAnchor.MiddleCenter, Skin.Highlight);
+
+            // page strip
+            float x = -((Pages.Length - 1) * 0.5f) * 186f;
+            foreach (var page in Pages) {
+                string p = page;
+                var b = UIKit.Button(Root, "Page" + p, new Vector2(0.5f, 1f), new Vector2(x, -112), new Vector2(176, 62),
+                                     Loc.T("page." + p.ToLowerInvariant()), () => ShowPage(p), 22);
+                pageButtons[p] = b;
+                x += 186f;
+            }
+
+            UIKit.Button(Root, "Back", new Vector2(0f, 1f), new Vector2(110, -44), new Vector2(180, 64),
+                         Loc.T("common.back"), () => onBack?.Invoke(), 26);
+
+            content = UIKit.Panel(Root, "Content", new Vector2(0.08f, 0.04f), new Vector2(0.92f, 0.80f),
+                                  Vector2.zero, Vector2.zero);
+
+            foreach (var page in Pages) {
+                var pr = UIKit.Panel(content, page, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                pageRoots[page] = pr;
+                pr.gameObject.SetActive(false);
+            }
+            BuildControls(pageRoots["Controls"]);
+            BuildGame(pageRoots["Game"]);
+            BuildAudio(pageRoots["Audio"]);
+            BuildVideo(pageRoots["Video"]);
+            BuildLanguage(pageRoots["Language"]);
+            BuildAbout(pageRoots["About"]);
+            ShowPage("Controls");
+        }
+
+        public void ShowPage(string page) {
+            CurrentPage = page;
+            foreach (var kv in pageRoots) kv.Value.gameObject.SetActive(kv.Key == page);
+            foreach (var kv in pageButtons) {
+                var img = kv.Value.GetComponent<Image>();
+                img.color = kv.Key == page ? new Color(1f, 0.88f, 0.7f) : Color.white;
+            }
+        }
+
+        public void SetVisible(bool v) { if (Root != null) Root.gameObject.SetActive(v); }
+        public bool Visible => Root != null && Root.gameObject.activeSelf;
+
+        // ---------- row helpers ----------
+        const float RowHeight = 96f;
+
+        void StartRows() { rowY = -58f; }
+
+        RectTransform Row(RectTransform page, string label) {
+            var row = UIKit.Panel(page, "row:" + label, new Vector2(0, 1), new Vector2(1, 1),
+                                  new Vector2(0, rowY - RowHeight * 0.5f), new Vector2(0, rowY + RowHeight * 0.5f),
+                                  new Color(1, 1, 1, 0.05f));
+            UIKit.Text(row, "label", new Vector2(0f, 0.5f), new Vector2(230, 0), new Vector2(440, 48),
+                       label, 26, Loc.Arabic ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft);
+            rowY -= RowHeight + 8f;
+            return row;
+        }
+
+        void Choice(RectTransform page, string label, string[] options, Func<int> get, Action<int> set) {
+            var row = Row(page, label);
+            var value = UIKit.Text(row, "value", new Vector2(1f, 0.5f), new Vector2(-330, 0), new Vector2(260, 48),
+                                   options[Mathf.Clamp(get(), 0, options.Length - 1)], 26);
+            UIKit.Button(row, "prev", new Vector2(1f, 0.5f), new Vector2(-560, 0), new Vector2(84, 68), "<", () => {
+                int v = (get() - 1 + options.Length) % options.Length;
+                set(v); UIKit.SetText(value, options[v]); Changed();
+            }, 28);
+            UIKit.Button(row, "next", new Vector2(1f, 0.5f), new Vector2(-96, 0), new Vector2(84, 68), ">", () => {
+                int v = (get() + 1) % options.Length;
+                set(v); UIKit.SetText(value, options[v]); Changed();
+            }, 28);
+        }
+
+        void Switch(RectTransform page, string label, Func<bool> get, Action<bool> set) {
+            Choice(page, label, new[] { Loc.T("common.off"), Loc.T("common.on") },
+                   () => get() ? 1 : 0, v => set(v == 1));
+        }
+
+        void SliderRow(RectTransform page, string label, float min, float max, Func<float> get, Action<float> set,
+                       Func<float, string> format, float step) {
+            var row = Row(page, label);
+            var value = UIKit.Text(row, "value", new Vector2(1f, 0.5f), new Vector2(-96, 0), new Vector2(120, 48),
+                                   format(get()), 26);
+            var slider = UIKit.Slider(row, "slider", new Vector2(1f, 0.5f), new Vector2(-330, 0), new Vector2(360, 36),
+                                      min, max, get(), v => { set(v); UIKit.SetText(value, format(get())); Changed(); });
+            UIKit.Button(row, "minus", new Vector2(1f, 0.5f), new Vector2(-560, 0), new Vector2(84, 68), "-", () => {
+                slider.value = Mathf.Clamp(slider.value - step, min, max);
+            }, 28);
+            UIKit.Button(row, "plus", new Vector2(1f, 0.5f), new Vector2(-20, 0), new Vector2(84, 68), "+", () => {
+                slider.value = Mathf.Clamp(slider.value + step, min, max);
+            }, 28);
+        }
+
+        void ResetRow(RectTransform page, Action reset) {
+            var row = Row(page, "");
+            UIKit.Button(row, "reset", new Vector2(1f, 0.5f), new Vector2(-150, 0), new Vector2(280, 68),
+                         Loc.T("common.reset"), () => { reset(); Rebuild(); Changed(); }, 24);
+        }
+
+        void Changed() {
+            SettingsStore.MarkChanged();
+            SettingsStore.Flush();          // settings must survive an immediate kill
+            onChanged?.Invoke();
+        }
+
+        /// <summary>Rebuilds the pages in place (after a reset or a language change).</summary>
+        public void Rebuild() {
+            var parent = (RectTransform)Root.parent;
+            string page = CurrentPage;
+            DestroyImmediate(Root.gameObject);
+            Build(parent);
+            ShowPage(page);
+        }
+
+        // ---------- pages ----------
+        void BuildControls(RectTransform page) {
+            StartRows();
+            Choice(page, Loc.T("ctl.directionMode"),
+                   new[] { Loc.T("ctl.dpad"), Loc.T("ctl.floating"), Loc.T("ctl.fixed") },
+                   () => (int)S.directionMode, v => S.directionMode = (DirectionMode)v);
+            SliderRow(page, Loc.T("ctl.buttonSize"), 0.6f, 1.6f, () => S.buttonSize, v => S.buttonSize = v,
+                      v => Mathf.RoundToInt(v * 100) + " %", 0.05f);
+            SliderRow(page, Loc.T("ctl.opacity"), 0.2f, 1f, () => S.controlsOpacity, v => S.controlsOpacity = v,
+                      v => Mathf.RoundToInt(v * 100) + " %", 0.05f);
+            Switch(page, Loc.T("ctl.slide"), () => S.slideToPress, v => S.slideToPress = v);
+            Switch(page, Loc.T("ctl.macro"), () => S.macroButtons, v => S.macroButtons = v);
+            Switch(page, Loc.T("ctl.showDW"), () => S.showDW, v => S.showDW = v);
+            Choice(page, Loc.T("ctl.haptics"), new[] { Loc.T("common.off"), Loc.T("ctl.light"), Loc.T("ctl.strong") },
+                   () => (int)S.haptics, v => S.haptics = (Haptics)v);
+            Choice(page, Loc.T("ctl.onScreen"), new[] { Loc.T("ctl.auto"), Loc.T("ctl.always"), Loc.T("ctl.never") },
+                   () => (int)S.onScreenControls, v => S.onScreenControls = (OnScreenControls)v);
+            Switch(page, Loc.T("ctl.buttonAssist"), () => S.buttonAssist, v => S.buttonAssist = v);
+            Choice(page, Loc.T("ctl.socd"), new[] { "0", "1", "2", "3", "4" },
+                   () => S.socdResolution, v => S.socdResolution = v);
+            SliderRow(page, Loc.T("ctl.sensitivity"), 0.1f, 1f, () => S.stickSensitivity, v => S.stickSensitivity = v,
+                      v => v.ToString("0.00"), 0.05f);
+            SliderRow(page, Loc.T("ctl.deadzone"), 0.05f, 0.6f, () => S.stickDeadZone, v => S.stickDeadZone = v,
+                      v => v.ToString("0.00"), 0.05f);
+            Choice(page, Loc.T("ctl.preset"), ControlLayout.PresetNames,
+                   () => Mathf.Max(0, Array.IndexOf(ControlLayout.PresetNames, S.layoutPreset)),
+                   v => { S.layoutPreset = ControlLayout.PresetNames[v]; S.ResetLayout(); });
+            Choice(page, Loc.T("ctl.slot"), new[] { "1", "2", "3" }, () => S.layoutSlot, v => S.layoutSlot = v);
+            var row = Row(page, "");
+            UIKit.Button(row, "editLayout", new Vector2(1f, 0.5f), new Vector2(-150, 0), new Vector2(280, 68),
+                         Loc.T("ctl.editLayout"), () => onEditLayout?.Invoke(), 24);
+            ResetRow(page, () => {
+                var d = new GameSettings();
+                S.directionMode = d.directionMode; S.buttonSize = d.buttonSize; S.controlsOpacity = d.controlsOpacity;
+                S.slideToPress = d.slideToPress; S.macroButtons = d.macroButtons; S.showDW = d.showDW;
+                S.haptics = d.haptics; S.onScreenControls = d.onScreenControls; S.buttonAssist = d.buttonAssist;
+                S.socdResolution = d.socdResolution; S.stickSensitivity = d.stickSensitivity;
+                S.stickDeadZone = d.stickDeadZone; S.layoutPreset = d.layoutPreset; S.ResetLayout();
+            });
+        }
+
+        void BuildGame(RectTransform page) {
+            StartRows();
+            SliderRow(page, Loc.T("game.difficulty"), 1, 8, () => S.difficulty, v => S.difficulty = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v).ToString(), 1);
+            SliderRow(page, Loc.T("game.life"), 10, 300, () => S.life, v => S.life = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v) + " %", 10);
+            Choice(page, Loc.T("game.time"), new[] { "99", "60", "30", "∞" },
+                   () => S.roundTime == 99 ? 0 : S.roundTime == 60 ? 1 : S.roundTime == 30 ? 2 : 3,
+                   v => S.roundTime = v == 0 ? 99 : v == 1 ? 60 : v == 2 ? 30 : -1);
+            SliderRow(page, Loc.T("game.wins"), 1, 5, () => S.roundsToWin, v => S.roundsToWin = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v).ToString(), 1);
+            SliderRow(page, Loc.T("game.speed"), -9, 9, () => S.gameSpeed, v => S.gameSpeed = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v).ToString(), 1);
+            Switch(page, Loc.T("game.autoGuard"), () => S.autoGuard, v => S.autoGuard = v);
+            ResetRow(page, () => {
+                var d = new GameSettings();
+                S.difficulty = d.difficulty; S.life = d.life; S.roundTime = d.roundTime;
+                S.roundsToWin = d.roundsToWin; S.gameSpeed = d.gameSpeed; S.autoGuard = d.autoGuard;
+            });
+        }
+
+        void BuildAudio(RectTransform page) {
+            StartRows();
+            SliderRow(page, Loc.T("audio.master"), 0, 100, () => S.masterVolume, v => { S.masterVolume = Mathf.RoundToInt(v); AudioListener.volume = S.masterVolume / 100f; },
+                      v => Mathf.RoundToInt(v) + " %", 5);
+            SliderRow(page, Loc.T("audio.bgm"), 0, 100, () => S.bgmVolume, v => S.bgmVolume = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v) + " %", 5);
+            SliderRow(page, Loc.T("audio.sfx"), 0, 100, () => S.sfxVolume, v => S.sfxVolume = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v) + " %", 5);
+            ResetRow(page, () => {
+                var d = new GameSettings();
+                S.masterVolume = d.masterVolume; S.bgmVolume = d.bgmVolume; S.sfxVolume = d.sfxVolume;
+            });
+        }
+
+        void BuildVideo(RectTransform page) {
+            StartRows();
+            Choice(page, Loc.T("video.fps"), new[] { "30", "60" }, () => S.fpsCap == 30 ? 0 : 1,
+                   v => { S.fpsCap = v == 0 ? 30 : 60; Application.targetFrameRate = S.fpsCap; });
+            SliderRow(page, Loc.T("video.renderScale"), 50, 100, () => S.renderScale, v => S.renderScale = Mathf.RoundToInt(v),
+                      v => Mathf.RoundToInt(v) + " %", 10);
+            Choice(page, Loc.T("video.filter"), new[] { Loc.T("video.sharp"), Loc.T("video.smooth") },
+                   () => (int)S.pixelFilter, v => S.pixelFilter = (PixelFilter)v);
+            Switch(page, Loc.T("video.showFps"), () => S.showFps, v => S.showFps = v);
+            ResetRow(page, () => {
+                var d = new GameSettings();
+                S.fpsCap = d.fpsCap; S.renderScale = d.renderScale; S.pixelFilter = d.pixelFilter; S.showFps = d.showFps;
+            });
+        }
+
+        void BuildLanguage(RectTransform page) {
+            StartRows();
+            Choice(page, Loc.T("page.language"),
+                   new[] { Loc.T("lang.system"), Loc.T("lang.arabic"), Loc.T("lang.english") },
+                   () => (int)S.language,
+                   v => { S.language = (Language)v; Loc.Apply(S.language); });
+            var row = Row(page, "");
+            UIKit.Button(row, "apply", new Vector2(1f, 0.5f), new Vector2(-150, 0), new Vector2(280, 68),
+                         Loc.T("common.save"), () => { Changed(); Rebuild(); }, 24);
+        }
+
+        void BuildAbout(RectTransform page) {
+            StartRows();
+            UIKit.Text(page, "version", new Vector2(0.5f, 1f), new Vector2(0, -60), new Vector2(760, 44),
+                       "my-ikmen " + Application.version, 26);
+            UIKit.Text(page, "credits", new Vector2(0.5f, 1f), new Vector2(0, -130), new Vector2(820, 220),
+                       Loc.Arabic
+                         ? "محرّك Ikemen GO (MIT) · رسوم الـ screenpack برخصة CC BY 3.0\nالفنانون: Ohmga Shironeko, SuperFromND, President Devon,\nRurouni, Shiyo Kakuge, Cylia Margatroid, Miguel Young\nخط Amiri برخصة OFL"
+                         : "Ikemen GO engine (MIT) · Screenpack art CC BY 3.0\nOhmga Shironeko, SuperFromND, President Devon,\nRurouni, Shiyo Kakuge, Cylia Margatroid, Miguel Young\nAmiri font (OFL)",
+                       22, TextAnchor.UpperCenter);
+        }
+    }
+}
