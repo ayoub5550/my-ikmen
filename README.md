@@ -12,6 +12,9 @@ An Android fighting game built with **Unity**, based on the open-source **Ikemen
 | `assets/screenpack/` | موارد اللعبة الافتراضية: الشخصيات، الساحات، القوائم، الخطوط، الأصوات، الفيديو |
 | `unity/` | مشروع Unity (يُضاف في المراحل القادمة) |
 | `docs/` | خطة التطوير ووثائق كل مرحلة |
+| `AGENTS.md` | دليل المطوّرين والـ agents (ابدأ من هنا) / Start here for developers and AI agents |
+| `TESTING.md` | طرق الاختبار بدون هاتف / Testing layers |
+| `tools/sandbox/` | إصلاحات بيئة البناء الآلية (من my-librequake) |
 
 ## الرخص / Licences
 
