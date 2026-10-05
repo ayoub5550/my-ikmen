@@ -642,7 +642,7 @@ namespace IK.Core {
             e.ScreenSpace = e.PosType == "left" || e.PosType == "right" || e.PosType == "front" || e.PosType == "back" || e.PosType == "none";
             if (e.ScreenSpace && Engine != null && Engine.Camera != null) e.PosX -= Engine.Camera.X;
             e.BindTarget = e.PosType == "p2" ? (Engine != null ? Engine.Opponent(Root) : null) : this;
-            var vel = EvalPair(c, "vel", 0, 0);
+            var vel = EvalPair(c, c.Has("vel") ? "vel" : "velocity", 0, 0);
             e.VelX = vel[0] * e.Facing; e.VelY = vel[1];
             var acc = EvalPair(c, "accel", 0, 0);
             e.AccelX = acc[0] * e.Facing; e.AccelY = acc[1];
@@ -679,7 +679,7 @@ namespace IK.Core {
                     e.OffX = pos[0]; e.OffY = pos[1];
                     if (e.BindTime == 0 && e.BindTarget != null) { e.PosX = e.BindTarget.PosX + pos[0] * e.Facing; e.PosY = e.BindTarget.PosY + pos[1]; }
                 }
-                if (c.Has("vel")) { var v = EvalPair(c, "vel", 0, 0); e.VelX = v[0] * e.Facing; e.VelY = v[1]; }
+                if (c.Has("vel") || c.Has("velocity")) { var v = EvalPair(c, c.Has("vel") ? "vel" : "velocity", 0, 0); e.VelX = v[0] * e.Facing; e.VelY = v[1]; }
                 if (c.Has("accel")) { var a = EvalPair(c, "accel", 0, 0); e.AccelX = a[0] * e.Facing; e.AccelY = a[1]; }
                 if (c.Has("bindtime")) e.BindTime = EvalInt(c.Get("bindtime"));
                 if (c.Has("removetime")) { e.RemoveTime = EvalInt(c.Get("removetime")); e.Time = 0; }
@@ -754,7 +754,11 @@ namespace IK.Core {
                 // the flash animation, from fightfx unless `anim = S…`
                 string animRef = c.Get("anim", "30");
                 if (animRef.Trim() != "-1") {
-                    int no; var src = ParseAnimRef(animRef, out no);
+                    // SuperPause: no prefix = fightfx, `S` = the character's own .air
+                    string ar = animRef.Trim();
+                    bool own = ar.Length > 1 && (ar[0] == 'S' || ar[0] == 's') && !char.IsLetter(ar[1]);
+                    int no; ParseAnimRef(ar, out no);
+                    var src = own ? SpriteSource.Character : SpriteSource.FightFx;
                     if (no >= 0) {
                         var pos = EvalPair(c, "pos", 0, 0);
                         var e = new Explod {
