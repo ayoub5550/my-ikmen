@@ -164,5 +164,17 @@ namespace IK.Tests {
             f.Selected(r.Cells[0], 1);
             Assert.AreEqual(FlowStep.GameOver, f.MatchEnded(new MatchResult { Winner = 1 }), "a loss ends the run");
         }
+
+        [Test]
+        public void Music_EveryScreenTrackShips() {
+            foreach (var name in new[] { "title", "select", "versus", "winner", "continue", "fight1", "fight2", "fight3" }) {
+                var clip = Resources.Load<AudioClip>("music/" + name);
+                Assert.IsNotNull(clip, "Resources/music/" + name + ".ogg (tools/music/compose.py)");
+                Assert.AreEqual(2, clip.channels, name);
+                Assert.Greater(clip.length, name.StartsWith("fight") || name == "title" || name == "select" ? 40f : 5f, name);
+            }
+            Assert.AreEqual(IK.App.MusicPlayer.ForStage("kfm.def"), IK.App.MusicPlayer.ForStage("KFM.def"), "stable per stage");
+            CollectionAssert.Contains(IK.App.MusicPlayer.FightTracks, IK.App.MusicPlayer.ForStage("stage0.def"));
+        }
     }
 }

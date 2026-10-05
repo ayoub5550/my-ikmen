@@ -39,6 +39,8 @@ namespace IK.App {
         public InputDisplay Display { get; private set; }
         public TitleScreen Title { get; private set; }
         public SelectScreen Select { get; private set; }
+        /// <summary>dev.6 background music.</summary>
+        public MusicPlayer Music { get; private set; }
         public VersusScreen Versus { get; private set; }
         public VictoryScreen Victory { get; private set; }
         public ContinueScreen ContinueMenu { get; private set; }
@@ -72,6 +74,7 @@ namespace IK.App {
 
             Gamepad = gameObject.AddComponent<GamepadInput>();
             Router = gameObject.AddComponent<InputRouter>();
+            Music = gameObject.AddComponent<MusicPlayer>();
             Router.touch = Touch;
             Router.gamepad = Gamepad;
             Router.Configure(s);
@@ -299,6 +302,24 @@ namespace IK.App {
             Router.paused = screen != Screen_.InputTest && screen != Screen_.Training &&
                             screen != Screen_.Fight;
             if (screen == Screen_.Layout) Layout.Refresh();
+            if (Music != null) Music.Play(TrackFor(screen), screen != Screen_.Versus && screen != Screen_.Victory && screen != Screen_.Continue && screen != Screen_.Results);
+        }
+
+        /// <summary>dev.6: the music of each screen (system.def [Music] roles).</summary>
+        public string TrackFor(Screen_ screen) {
+            switch (screen) {
+                case Screen_.Title: case Screen_.Credits: return "title";
+                case Screen_.Select: return "select";
+                case Screen_.Versus: return "versus";
+                case Screen_.Victory: return "winner";
+                case Screen_.Continue: return "continue";
+                case Screen_.Results:
+                    return Results != null && (Results.Mode == ResultsScreen.Kind.Win || Results.Mode == ResultsScreen.Kind.TimeAttack) ? "winner" : "";
+                case Screen_.Fight: return MusicPlayer.ForStage(Flow.Current != null ? Flow.Current.StageDef : "kfm.def");
+                case Screen_.Training: return "fight1";
+                case Screen_.Settings: case Screen_.Layout: case Screen_.Main: return Music != null ? Music.Playing : "";
+                default: return "";
+            }
         }
 
         void OnTick(InputFrame frame) {
