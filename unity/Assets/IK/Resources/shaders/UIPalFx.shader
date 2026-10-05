@@ -4,6 +4,7 @@
 // and the MUGEN blend modes are chosen with _SrcBlend/_DstBlend/_BlendOp:
 //   normal = SrcAlpha/OneMinusSrcAlpha, add = SrcAlpha/One (premultiplied), sub = RevSub.
 // Reference: engine/ikemen-go/src/render_gl33.go + shaders (palfx uniforms "add", "mult", "gray", "neg").
+// dev.7: optional crisp pixel-art filtering (global _IKPixelAA), see RenderQuality.cs.
 // Lives under Resources and in GraphicsSettings.m_AlwaysIncludedShaders so IL2CPP keeps it.
 Shader "IK/UIPalFx" {
     Properties {
@@ -48,6 +49,8 @@ Shader "IK/UIPalFx" {
             struct appdata_t { float4 vertex : POSITION; float4 color : COLOR; float2 texcoord : TEXCOORD0; };
             struct v2f { float4 vertex : SV_POSITION; fixed4 color : COLOR; float2 texcoord : TEXCOORD0; };
             sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
+            float _IKPixelAA;               // global (Options -> Video -> Crisp); not a material property
             fixed4 _Color;
             float4 _Add, _Mul;
             float _Sat, _Invert, _Premul;
@@ -58,8 +61,19 @@ Shader "IK/UIPalFx" {
                 o.color = v.color * _Color;
                 return o;
             }
+            // dev.7 "Crisp": pixel-art anti-aliasing. With a bilinear texture, sample at the texel
+            // centre except within one screen pixel of a texel border, where the two texels are
+            // blended over that one pixel: square pixels of even width at any scale, no shimmer.
+            float2 CrispUV(float2 uv) {
+                float2 px = uv * _MainTex_TexelSize.zw;
+                float2 box = clamp(fwidth(px), 1e-5, 1.0);
+                float2 tx = px - 0.5 * box;
+                float2 off = smoothstep(1.0 - box, 1.0, frac(tx));
+                return (floor(tx) + 0.5 + off) * _MainTex_TexelSize.xy;
+            }
             fixed4 frag(v2f i) : SV_Target {
-                fixed4 c = tex2D(_MainTex, i.texcoord);
+                float2 uv = _IKPixelAA > 0.5 ? CrispUV(i.texcoord) : i.texcoord;
+                fixed4 c = tex2D(_MainTex, uv);
                 float3 rgb = c.rgb;
                 if (_Invert > 0.5) rgb = 1.0 - rgb;
                 float g = dot(rgb, float3(0.299, 0.587, 0.114));

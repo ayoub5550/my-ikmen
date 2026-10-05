@@ -153,7 +153,7 @@ namespace IK.Core {
                 hd.AirJuggle = IErr;
             }
             foreach (var kv in c.Params) {
-                string key = kv.Key.Trim().ToLowerInvariant();
+                string key = kv.Key.Trim().Lc();
                 string val = kv.Value;
                 switch (key) {
                     case "attr": hd.Attr = ParseAttr(val); break;
@@ -400,7 +400,7 @@ namespace IK.Core {
 
         public static Reaction ParseReaction(string s, Reaction fallback) {
             if (string.IsNullOrEmpty(s)) return fallback;
-            switch (s.Trim().ToLowerInvariant()) {
+            switch (s.Trim().Lc()) {
                 case "light": return Reaction.Light;
                 case "medium": case "med": return Reaction.Medium;
                 case "hard": case "heavy": return Reaction.Hard;
@@ -413,7 +413,7 @@ namespace IK.Core {
 
         public static HitKind ParseHitKind(string s, HitKind fallback) {
             if (string.IsNullOrEmpty(s)) return fallback;
-            switch (s.Trim().ToLowerInvariant()) {
+            switch (s.Trim().Lc()) {
                 case "none": return HitKind.None;
                 case "high": return HitKind.High;
                 case "low": return HitKind.Low;
@@ -424,7 +424,7 @@ namespace IK.Core {
 
         static TradeType ParseTradeType(string s) {
             if (string.IsNullOrEmpty(s)) return TradeType.Hit;
-            switch (s.Trim().ToLowerInvariant()) {
+            switch (s.Trim().Lc()) {
                 case "miss": return TradeType.Miss;
                 case "dodge": return TradeType.Dodge;
                 default: return TradeType.Hit;

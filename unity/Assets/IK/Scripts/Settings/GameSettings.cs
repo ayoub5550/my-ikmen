@@ -7,7 +7,7 @@ namespace IK.Settings {
     public enum OnScreenControls { Auto = 0, Always = 1, Never = 2 }
     public enum Haptics { Off = 0, Light = 1, Strong = 2 }
     public enum Language { System = 0, Arabic = 1, English = 2 }
-    public enum PixelFilter { Sharp = 0, Smooth = 1 }
+    public enum PixelFilter { Sharp = 0, Smooth = 1, Crisp = 2 }
 
     /// <summary>
     /// Every persisted setting (docs/TOUCH_AND_SETTINGS.md §5). Key names mirror Ikemen's
@@ -55,6 +55,8 @@ namespace IK.Settings {
         public int renderScale = 100;              // 50..100 %
         public PixelFilter pixelFilter = PixelFilter.Sharp;
         public bool showFps = false;
+        // dev.7: look of the on-screen controls (0 modern, 1 classic dev.1-6 plates)
+        public int buttonStyle = 0;
 
         // ---- Language ----
         public Language language = Language.System;
@@ -78,6 +80,8 @@ namespace IK.Settings {
             sfxVolume = Mathf.Clamp(sfxVolume, 0, 100);
             fpsCap = fpsCap <= 45 ? 30 : 60;
             renderScale = Mathf.Clamp(renderScale, 50, 100);
+            buttonStyle = Mathf.Clamp(buttonStyle, 0, 1);
+            if ((int)pixelFilter < 0 || (int)pixelFilter > 2) pixelFilter = PixelFilter.Sharp;
             layoutSlot = Mathf.Clamp(layoutSlot, 0, 2);
             if (Array.IndexOf(ControlLayout.PresetNames, layoutPreset) < 0) layoutPreset = "Default";
             while (layoutSlots.Count < 3) layoutSlots.Add(null);

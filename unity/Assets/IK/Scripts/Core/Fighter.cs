@@ -138,7 +138,7 @@ namespace IK.Core {
         /// <summary>Sets one `AssertSpecial` flag by name.</summary>
         public void AssertSpecial(string flag) {
             if (string.IsNullOrEmpty(flag)) return;
-            switch (flag.Trim().ToLowerInvariant()) {
+            switch (flag.Trim().Lc()) {
                 case "nowalk": NoWalk = true; break;
                 case "nojump": NoJump = true; break;
                 case "nocrouch": NoCrouch = true; break;
@@ -340,7 +340,7 @@ namespace IK.Core {
                     } else {
                         // the short form KFM uses: `var(1) = 0`, `fvar(2) = 1.5`
                         foreach (var kv in c.Params) {
-                            string key = kv.Key.Trim().ToLowerInvariant();
+                            string key = kv.Key.Trim().Lc();
                             bool isF = key.StartsWith("fvar(");
                             if (!isF && !key.StartsWith("var(")) continue;
                             int open = key.IndexOf('('), close = key.IndexOf(')');
@@ -507,7 +507,7 @@ namespace IK.Core {
 
         public bool TryTrigger(string name, string arg, float argValue, out float value) {
             value = 0f;
-            switch (name.ToLowerInvariant()) {
+            switch (name.Lc()) {
                 case "command": value = arg != null && ActiveCommands.Active(arg) ? 1 : 0; return true;
                 case "stateno": value = StateNo; return true;
                 case "prevstateno": value = PrevStateNo; return true;
@@ -648,7 +648,7 @@ namespace IK.Core {
                 case "frontedgebodydist": {
                     float left = Engine != null && Engine.Stage != null ? Engine.Stage.LeftBound : -200f;
                     float right = Engine != null && Engine.Stage != null ? Engine.Stage.RightBound : 200f;
-                    bool front = name.ToLowerInvariant().StartsWith("front");
+                    bool front = name.Lc().StartsWith("front");
                     float edge = ((front == (Facing >= 0)) ? right - WorldX : WorldX - left) / Scl;
                     value = edge - (Type == StateType.Air ? Const.AirFront : Const.GroundFront);
                     return true;
@@ -670,14 +670,14 @@ namespace IK.Core {
                     value = 0;
                     return true;
             }
-            if (TryTriggerEx(name.ToLowerInvariant(), arg, argValue, out value)) return true;
+            if (TryTriggerEx(name.Lc(), arg, argValue, out value)) return true;
             UnknownTriggers.Add(name);
             return false;
         }
 
         float ConstOf(string key) {
             if (string.IsNullOrEmpty(key)) return 0f;
-            switch (key.ToLowerInvariant()) {
+            switch (key.Lc()) {
                 case "data.life": return Const.Life;
                 case "data.attack": return Const.Attack;
                 case "data.defence": return Const.Defence;

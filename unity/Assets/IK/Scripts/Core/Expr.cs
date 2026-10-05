@@ -176,7 +176,7 @@ namespace IK.Core {
             public Node Target, Value;
             public static bool IsTarget(Node n) {
                 if (n is Call c) {
-                    switch (c.Name.ToLowerInvariant()) {
+                    switch (c.Name.Lc()) {
                         case "var": case "fvar": case "sysvar": case "sysfvar": return true;
                     }
                 }
@@ -186,8 +186,8 @@ namespace IK.Core {
                 float v = Value.Eval(ctx, owner);
                 var ac = ctx as IAssignContext;
                 if (ac == null) return v;
-                if (Target is Call c) ac.Assign(c.Name.ToLowerInvariant(), (int)(c.Args.Count > 0 ? c.Args[0].Eval(ctx, owner) : 0), v);
-                else if (Target is Trigger t) ac.Assign(t.Name.ToLowerInvariant(), 0, v);
+                if (Target is Call c) ac.Assign(c.Name.Lc(), (int)(c.Args.Count > 0 ? c.Args[0].Eval(ctx, owner) : 0), v);
+                else if (Target is Trigger t) ac.Assign(t.Name.Lc(), 0, v);
                 return v;
             }
         }
@@ -285,7 +285,7 @@ namespace IK.Core {
             public List<Node> Args = new List<Node>();
             public override float Eval(IExprContext ctx, Expr owner) {
                 float A(int i) => i < Args.Count ? Args[i].Eval(ctx, owner) : 0f;
-                switch (Name.ToLowerInvariant()) {
+                switch (Name.Lc()) {
                     case "abs": return Math.Abs(A(0));
                     case "floor": return (float)Math.Floor(A(0));
                     case "ceil": return (float)Math.Ceiling(A(0));
@@ -528,7 +528,7 @@ namespace IK.Core {
 
             Node ParseName() {
                 if (AtRedirect()) {
-                    var r = new Redirect { Kind = Cur.Text.ToLowerInvariant() };
+                    var r = new Redirect { Kind = Cur.Text.Lc() };
                     Next();
                     if (Cur.Type == T.LParen) {
                         Next();
@@ -619,7 +619,7 @@ namespace IK.Core {
             }
 
             static bool IsFlagTrigger(string name) {
-                switch (name.ToLowerInvariant()) {
+                switch (name.Lc()) {
                     case "statetype":
                     case "movetype":
                     case "physics":

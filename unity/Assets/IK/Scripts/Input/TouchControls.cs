@@ -51,6 +51,7 @@ namespace IK.Input {
             dirRt.offsetMin = dirRt.offsetMax = Vector2.zero;
             Direction = dirGo.AddComponent<DirectionPad>();
             Direction.mode = s.directionMode;
+            Direction.style = s.buttonStyle;
             Direction.deadZone = s.stickDeadZone;
             Direction.onSectorChanged = _ => Haptic(false);
             Direction.Build(dirRt, layout.Get(ControlId.Direction), safeRef, s.buttonSize, s.controlsOpacity);
@@ -77,25 +78,48 @@ namespace IK.Input {
             var rt = UIKit.Rect(Root, "Btn" + id, Vector2.zero, new Vector2(r.center.x - safeRef.xMin, r.center.y - safeRef.yMin),
                                 new Vector2(r.width, r.height));
             var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = id == ControlId.Start || id == ControlId.Pause ? Skin.Frame : Skin.Round;
-            img.type = (id == ControlId.Start || id == ControlId.Pause) ? Image.Type.Sliced : Image.Type.Simple;
-            img.preserveAspect = id != ControlId.Start && id != ControlId.Pause;
             img.raycastTarget = true;
             float alpha = Mathf.Clamp01(settings.controlsOpacity * placement.opacity);
-            img.color = new Color(tint.r, tint.g, tint.b, alpha);
-
-            var text = UIKit.Text(rt, "label", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(r.width, r.height),
-                                  label, Mathf.RoundToInt(r.height * 0.34f), TextAnchor.MiddleCenter, Skin.Text);
-            text.rectTransform.anchorMin = Vector2.zero;
-            text.rectTransform.anchorMax = Vector2.one;
-            text.rectTransform.offsetMin = text.rectTransform.offsetMax = Vector2.zero;
+            bool plate = id == ControlId.Start || id == ControlId.Pause;
+            ButtonLook look = null;
+            if (settings.buttonStyle == 0) {
+                // dev.7 modern style: glass face + coloured ring, capsule START / pause
+                float labelSize = plate ? r.height * 0.3f : (label.Length > 2 ? r.height * 0.24f : r.height * 0.32f);
+                if (id == ControlId.Start) rt.sizeDelta = new Vector2(r.width * 1.6f, r.height);   // capsule; never below the hit target
+                look = ButtonLook.Build(rt, img, label, ModernTint(id), alpha, plate, labelSize);
+            } else {
+                img.sprite = plate ? Skin.Frame : Skin.Round;
+                img.type = plate ? Image.Type.Sliced : Image.Type.Simple;
+                img.preserveAspect = !plate;
+                img.color = new Color(tint.r, tint.g, tint.b, alpha);
+                var text = UIKit.Text(rt, "label", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(r.width, r.height),
+                                      label, Mathf.RoundToInt(r.height * 0.34f), TextAnchor.MiddleCenter, Skin.Text);
+                text.rectTransform.anchorMin = Vector2.zero;
+                text.rectTransform.anchorMax = Vector2.one;
+                text.rectTransform.offsetMin = text.rectTransform.offsetMax = Vector2.zero;
+            }
 
             var hb = rt.gameObject.AddComponent<HoldButton>();
+            hb.look = look;
             hb.SetBaseColor(img.color);
             hb.slideToPress = () => settings.slideToPress;
             hb.onHold = held => OnHold(id, held);
             buttons.Add(hb);
             byId[id] = hb;
+        }
+
+        static Color ModernTint(ControlId id) {
+            switch (id) {
+                case ControlId.LP: return Skin.LP;
+                case ControlId.MP: return Skin.MP;
+                case ControlId.HP: return Skin.HP;
+                case ControlId.LK: return Skin.LK;
+                case ControlId.MK: return Skin.MK;
+                case ControlId.HK: return Skin.HK;
+                case ControlId.MacroXY: return Skin.MP;
+                case ControlId.MacroAB: return Skin.MK;
+                default: return Skin.Neutral;
+            }
         }
 
         void OnHold(ControlId id, bool held) {

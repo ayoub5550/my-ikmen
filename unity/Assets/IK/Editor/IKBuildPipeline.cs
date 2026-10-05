@@ -68,6 +68,7 @@ namespace IK.EditorTools {
             PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
             PlayerSettings.gpuSkinning = true;
             PlayerSettings.MTRendering = true;
+            PlayerSettings.enableFrameTimingStats = true;      // dev.7: CPU/GPU frame times in the benchmark
             PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.Android, ManagedStrippingLevel.Low);
             PlayerSettings.stripEngineCode = true;
             QualitySettings.vSyncCount = 0;
@@ -100,6 +101,28 @@ namespace IK.EditorTools {
                     if (msg.type == LogType.Error || msg.type == LogType.Exception)
                         Debug.LogError("[IK build] " + msg.content);
             if (summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
+        }
+
+        /// <summary>
+        /// dev.7 test player for Linux (Mono, development off): runs under xvfb at any resolution
+        /// (`-screen-width 2400 -screen-height 1080`), unlike the batch editor whose game view is
+        /// 640x480. Used for real-resolution screenshots (`-ikshots dir`) and a player benchmark
+        /// (`-ikbench out.json`) — see TESTING.md §5. Not shipped.
+        /// </summary>
+        public static void BuildLinux() {
+            if (!File.Exists(MainScene)) CreateScene();
+            ConfigurePlayerSettings();
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
+            PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
+            PlayerSettings.resizableWindow = false;
+            PlayerSettings.runInBackground = true;          // xvfb has no focus; a paused player never renders
+            string exe = Path.GetFullPath(Env("IK_LINUX", "Builds/linux/ikmen.x86_64"));
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
+                scenes = new[] { MainScene }, locationPathName = exe,
+                target = BuildTarget.StandaloneLinux64, targetGroup = BuildTargetGroup.Standalone, options = BuildOptions.None,
+            });
+            Debug.Log($"[IK] linux build {report.summary.result} size={report.summary.totalSize / 1048576f:0.0} MB output={exe}");
+            if (report.summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
         }
 
         /// <summary>Compile-only entry point used by the first gate in TESTING.md.</summary>

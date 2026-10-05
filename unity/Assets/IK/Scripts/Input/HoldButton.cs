@@ -22,6 +22,8 @@ namespace IK.Input {
         public const int NoPointer = int.MinValue;
         public int pointerId = NoPointer;
         public bool IsHeld { get; private set; }
+        /// <summary>dev.7 modern look; when set it draws the pressed state instead of the tint.</summary>
+        public ButtonLook look;
 
         Image image;
         Color baseColor;
@@ -61,6 +63,7 @@ namespace IK.Input {
             if (IsHeld) return;                       // a second finger must not steal it
             IsHeld = true;
             pointerId = id;
+            if (look != null) { look.SetPressed(true); onHold?.Invoke(true); return; }
             if (image != null) image.color = PressedColor(baseColor);
             if (outline != null) outline.enabled = true;
             if (label != null) label.color = UI.Skin.Highlight;
@@ -71,6 +74,7 @@ namespace IK.Input {
             if (!IsHeld) return;
             IsHeld = false;
             pointerId = NoPointer;
+            if (look != null) { look.SetPressed(false); onHold?.Invoke(false); return; }
             if (image != null) image.color = baseColor;
             if (outline != null) outline.enabled = false;
             if (label != null) label.color = labelBase;
@@ -86,6 +90,7 @@ namespace IK.Input {
         /// <summary>Re-reads the idle colour after a skin/opacity change.</summary>
         public void SetBaseColor(Color c) {
             baseColor = c;
+            if (look != null) return;
             if (!IsHeld && image != null) image.color = c;
         }
 
