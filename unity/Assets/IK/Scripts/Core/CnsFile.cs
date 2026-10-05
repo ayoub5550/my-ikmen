@@ -14,6 +14,8 @@ namespace IK.Core {
         /// <summary>`persistent` (default 1): 0 = run only once per state entry.</summary>
         public int Persistent = 1;
         public int IgnoreHitPause;
+        /// <summary>dev.6: the body of a ZSS loop (<see cref="ZssFile.LoopType"/>), else null.</summary>
+        public List<StateController> Children;
 
         public string Get(string key, string fallback = "") =>
             Params.TryGetValue(key, out var v) ? v : fallback;

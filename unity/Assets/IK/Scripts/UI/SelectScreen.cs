@@ -21,7 +21,27 @@ namespace IK.UI {
     /// (the perspective side portrait) is not drawn.
     /// </summary>
     public class SelectScreen : FrontEndScreen {
-        public enum Phase { P1Char, P1Pal, P2Char, P2Pal, Stage, Level, Done }
+        public enum Phase { Team, P1Char, P1Pal, P2Char, P2Pal, Stage, Level, Done }
+
+        /// <summary>dev.6 team menu (`p1.teammenu` of system.def): mode and member count.</summary>
+        public static readonly (TeamMode mode, int size)[] TeamOptions = {
+            (TeamMode.Single, 1), (TeamMode.Turns, 2), (TeamMode.Turns, 3), (TeamMode.Turns, 4),
+            (TeamMode.Tag, 2), (TeamMode.Tag, 3), (TeamMode.Tag, 4),
+        };
+        public bool TeamGame { get; private set; }
+        public int TeamChoice { get; private set; } = 1;
+        public TeamMode Teams => TeamGame ? TeamOptions[TeamChoice].mode : TeamMode.Single;
+        public int TeamSize => TeamGame ? TeamOptions[TeamChoice].size : 1;
+        readonly List<int> p1Picks = new List<int>();
+        readonly List<int> p2Picks = new List<int>();
+        /// <summary>The members picked after the leader.</summary>
+        public List<RosterChar> P1Partners => Partners(p1Picks);
+        public List<RosterChar> P2Partners => Partners(p2Picks);
+        List<RosterChar> Partners(List<int> picks) {
+            var l = new List<RosterChar>();
+            for (int k = 1; k < picks.Count; k++) l.Add(CellChar(picks[k]));
+            return l;
+        }
 
         public GameMode Mode { get; private set; }
         public Roster Roster { get; private set; }
@@ -95,11 +115,15 @@ namespace IK.UI {
         }
 
         /// <summary>Starts a selection for <paramref name="mode"/> (called before showing the screen).</summary>
-        public void Begin(GameMode mode, Roster roster, int level) {
+        public void Begin(GameMode mode, Roster roster, int level, bool team = false) {
             Mode = mode;
             Roster = roster;
             Level = Mathf.Clamp(level, 1, 8);
+            TeamGame = team;
+            TeamChoice = 1;
+            p1Picks.Clear(); p2Picks.Clear();
             Phases.Clear();
+            if (team) Phases.Add(Phase.Team);
             Phases.Add(Phase.P1Char);
             if (Sel.PaletteSelect > 0) Phases.Add(Phase.P1Pal);
             if (GameFlow.PicksOpponent(mode)) {
@@ -160,8 +184,8 @@ namespace IK.UI {
         }
 
         RosterChar CellChar(int i) => Roster != null && i >= 0 && i < Roster.Cells.Count ? Roster.Cells[i] : null;
-        public RosterChar P1Char => CellChar(P1Cell);
-        public RosterChar P2Char => CellChar(P2Cell);
+        public RosterChar P1Char => p1Picks.Count > 0 ? CellChar(p1Picks[0]) : CellChar(P1Cell);
+        public RosterChar P2Char => p2Picks.Count > 0 ? CellChar(p2Picks[0]) : CellChar(P2Cell);
 
         // ------------------------------------------------------------------ drawing
 
@@ -196,13 +220,13 @@ namespace IK.UI {
             }
 
             bool p2Phase = Current == Phase.P2Char || Current == Phase.P2Pal || IndexOf(Current) > IndexOf(Phase.P2Pal) && Phases.Contains(Phase.P2Char);
-            DrawFace(0, P1Char, P1Pal, true);
-            DrawFace(1, P2Char, P2Pal, Phases.Contains(Phase.P2Char) && IndexOf(Current) >= IndexOf(Phase.P2Char));
+            DrawFace(0, Current == Phase.P1Char ? CellChar(P1Cell) : P1Char, P1Pal, Current != Phase.Team);
+            DrawFace(1, Current == Phase.P2Char ? CellChar(P2Cell) : P2Char, P2Pal, Phases.Contains(Phase.P2Char) && IndexOf(Current) >= IndexOf(Phase.P2Char));
             DrawPalMenu(0, Current == Phase.P1Pal);
             DrawPalMenu(1, Current == Phase.P2Pal);
             DrawCursors();
 
-            bool valueStep = Current == Phase.P1Pal || Current == Phase.P2Pal || Current == Phase.Stage || Current == Phase.Level;
+            bool valueStep = Current == Phase.Team || Current == Phase.P1Pal || Current == Phase.P2Pal || Current == Phase.Stage || Current == Phase.Level;
             leftButton.gameObject.SetActive(valueStep);
             rightButton.gameObject.SetActive(valueStep);
             var stageFont = Current == Phase.Stage ? Sel.StageActiveFont : Sel.StageFont;
@@ -217,7 +241,10 @@ namespace IK.UI {
 
         string HintText() {
             bool watch = Mode == GameMode.Watch;
+            if (TeamSize > 1 && Current == Phase.P1Char) return string.Format(Loc.T("fe.pickMember"), p1Picks.Count + 1, TeamSize);
+            if (TeamSize > 1 && Current == Phase.P2Char) return string.Format(Loc.T("fe.pickMemberP2"), p2Picks.Count + 1, TeamSize);
             switch (Current) {
+                case Phase.Team: return Loc.T("fe.pickTeam");
                 case Phase.P1Char: return Loc.T(watch ? "fe.pickP1Watch" : "fe.pickP1");
                 case Phase.P2Char: return Loc.T(watch ? "fe.pickP2Watch" : "fe.pickP2");
                 case Phase.P1Pal: case Phase.P2Pal: return Loc.T("fe.pickPal");
@@ -229,6 +256,7 @@ namespace IK.UI {
 
         public string ValueText() {
             switch (Current) {
+                case Phase.Team: return TeamLabel(TeamChoice);
                 case Phase.P1Pal: return string.Format(Loc.T("fe.color"), P1Pal);
                 case Phase.P2Pal: return string.Format(Loc.T("fe.color"), P2Pal);
                 case Phase.Stage:
@@ -239,6 +267,12 @@ namespace IK.UI {
             if (IndexOf(Current) > IndexOf(Phase.Stage) && Phases.Contains(Phase.Stage))
                 return StageIndex < 0 ? Loc.T("fe.stageAuto") : string.Format(Loc.T("fe.stage"), MotifAssets.StageName(Roster.Stages[StageIndex].Def));
             return "";
+        }
+
+        public static string TeamLabel(int choice) {
+            var o = TeamOptions[Mathf.Clamp(choice, 0, TeamOptions.Length - 1)];
+            if (o.mode == TeamMode.Single) return Loc.T("fe.teamSingle");
+            return string.Format(Loc.T(o.mode == TeamMode.Tag ? "fe.teamTag" : "fe.teamTurns"), o.size);
         }
 
         /// <summary>Go: portrait scale × motif localcoord width / character localcoord width.</summary>
@@ -347,6 +381,7 @@ namespace IK.UI {
         /// <summary>Left/right on a value step (palette, stage, level).</summary>
         public void Change(int d) {
             switch (Current) {
+                case Phase.Team: TeamChoice = Wrap(TeamChoice + d, 0, TeamOptions.Length - 1); MotifAssets.PlaySnd(Sel.StageMoveSnd); break;
                 case Phase.P1Pal: P1Pal = Wrap(P1Pal + d, 1, PalCount(P1Char)); MotifAssets.PlaySnd(Sel.P1.PalValueSnd); break;
                 case Phase.P2Pal: P2Pal = Wrap(P2Pal + d, 1, PalCount(P2Char)); MotifAssets.PlaySnd(Sel.P2.PalValueSnd); break;
                 case Phase.Stage: StageIndex = Wrap(StageIndex + d, -1, Roster.Stages.Count - 1); MotifAssets.PlaySnd(Sel.StageMoveSnd); break;
@@ -369,6 +404,14 @@ namespace IK.UI {
         }
 
         public void Confirm() {
+            // a team picks its members one after the other on the grid
+            if (Current == Phase.P1Char) {
+                p1Picks.Add(P1Cell);
+                if (p1Picks.Count < TeamSize) { MotifAssets.PlaySnd(Sel.P1.CursorDoneSnd); Refresh(); return; }
+            } else if (Current == Phase.P2Char) {
+                p2Picks.Add(P2Cell);
+                if (p2Picks.Count < TeamSize) { MotifAssets.PlaySnd(Sel.P2.CursorDoneSnd); Refresh(); return; }
+            }
             switch (Current) {
                 case Phase.P1Char: MotifAssets.PlaySnd(Sel.P1.CursorDoneSnd); break;
                 case Phase.P2Char: MotifAssets.PlaySnd(Sel.P2.CursorDoneSnd); break;
@@ -392,6 +435,9 @@ namespace IK.UI {
 
         public void Cancel() {
             MotifAssets.PlaySnd(Sel.CancelSnd);
+            // inside a team pick: take back the last member first
+            if (Current == Phase.P1Char && p1Picks.Count > 0) { P1Cell = p1Picks[p1Picks.Count - 1]; p1Picks.RemoveAt(p1Picks.Count - 1); Refresh(); return; }
+            if (Current == Phase.P2Char && p2Picks.Count > 0) { P2Cell = p2Picks[p2Picks.Count - 1]; p2Picks.RemoveAt(p2Picks.Count - 1); Refresh(); return; }
             int i = Phases.IndexOf(Current);
             if (Current == Phase.Done) i = Phases.Count;
             while (true) {
@@ -401,6 +447,8 @@ namespace IK.UI {
                 if (prev == Phase.P1Pal && (P1Char == null || P1Char.Random)) continue;
                 if (prev == Phase.P2Pal && (P2Char == null || P2Char.Random)) continue;
                 Current = prev;
+                if (prev == Phase.P1Char && p1Picks.Count > 0) { P1Cell = p1Picks[p1Picks.Count - 1]; p1Picks.RemoveAt(p1Picks.Count - 1); }
+                if (prev == Phase.P2Char && p2Picks.Count > 0) { P2Cell = p2Picks[p2Picks.Count - 1]; p2Picks.RemoveAt(p2Picks.Count - 1); }
                 break;
             }
             Refresh();

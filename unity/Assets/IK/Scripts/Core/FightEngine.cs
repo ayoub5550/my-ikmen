@@ -105,11 +105,13 @@ namespace IK.Core {
             StateTime = 0;
             RoundWinner = 0;
             ClearRoundEntities();
+            TeamsBeforeRound();
             timerTicks = TimerCount > 0 ? TimerCount * FramesPerCount : -1;
             for (int i = 0; i < 2; i++) {
                 var f = Players[i];
                 if (f == null) continue;
                 f.ResetForRound(true);
+                TeamsAfterReset(i, f);
                 f.Facing = i == 0 ? 1 : -1;
                 if (Stage != null) {
                     var start = i == 0 ? Stage.P1Start : Stage.P2Start;
@@ -160,6 +162,7 @@ namespace IK.Core {
             bool inputAllowed = State == RoundState.Fighting || State == RoundState.Over;
             Players[0]?.SetInput(inputAllowed ? p1Input : CmdKey.None);
             Players[1]?.SetInput(inputAllowed ? p2Input : CmdKey.None);
+            if (!paused) TeamsTick(inputAllowed ? p1Input : CmdKey.None, inputAllowed ? p2Input : CmdKey.None);
 
             if (!paused) {
                 // 2. facing: a grounded character with control turns to the opponent (char.go `turn`)
@@ -176,7 +179,7 @@ namespace IK.Core {
                 if (f == null || f.Destroyed) continue;
                 if (IsFrozen(f)) continue;
                 f.TickHitTimers();
-                if (f.InHitPause) { f.HitPauseTime--; continue; }
+                if (f.InHitPause) { f.HitPauseTime--; f.TickHitPause(); continue; }
                 f.Tick();
             }
             StepPause();
@@ -381,8 +384,8 @@ namespace IK.Core {
 
                 case RoundState.Fighting: {
                     if (timerTicks > 0) timerTicks--;
-                    bool p1Ko = Players[0] != null && Players[0].Life <= 0;
-                    bool p2Ko = Players[1] != null && Players[1].Life <= 0;
+                    bool p1Ko = SideOut(0);
+                    bool p2Ko = SideOut(1);
                     if (p1Ko || p2Ko) {
                         LastRoundKO = true;
                         RoundWinner = p1Ko && p2Ko ? 3 : p1Ko ? 2 : 1;
@@ -390,9 +393,8 @@ namespace IK.Core {
                         StateTime = 0;
                     } else if (timerTicks == 0) {
                         LastRoundKO = false;
-                        int l1 = Players[0] != null ? Players[0].Life : 0;
-                        int l2 = Players[1] != null ? Players[1].Life : 0;
-                        RoundWinner = l1 == l2 ? 3 : l1 > l2 ? 1 : 2;
+                        float l1 = SideLifeShare(0), l2 = SideLifeShare(1);
+                        RoundWinner = Math.Abs(l1 - l2) < 1e-6f ? 3 : l1 > l2 ? 1 : 2;
                         State = RoundState.Over;
                         StateTime = 0;
                     }
@@ -403,9 +405,11 @@ namespace IK.Core {
                     if (StateTime >= OverTime) {
                         State = RoundState.WinPose;
                         StateTime = 0;
-                        if (RoundWinner == 1 || RoundWinner == 3) Wins[0]++;
-                        if (RoundWinner == 2 || RoundWinner == 3) Wins[1]++;
-                        if (Wins[0] >= RoundsToWin || Wins[1] >= RoundsToWin) MatchOver = true;
+                        if (!TeamsCountRound()) {
+                            if (RoundWinner == 1 || RoundWinner == 3) Wins[0]++;
+                            if (RoundWinner == 2 || RoundWinner == 3) Wins[1]++;
+                            if (Wins[0] >= RoundsToWin || Wins[1] >= RoundsToWin) MatchOver = true;
+                        }
                         // the winner takes the win pose (state 180), the loser stays down
                         int winner = RoundWinner == 1 ? 0 : RoundWinner == 2 ? 1 : -1;
                         if (winner >= 0 && Players[winner] != null && Players[winner].Life > 0)

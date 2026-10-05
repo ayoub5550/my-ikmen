@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace IK.Core {
     /// <summary>Game modes of the dev.5 front end (Ikemen GO `main.lua` modes we ship).</summary>
-    public enum GameMode { Arcade, Versus, Training, Survival, Watch }
+    public enum GameMode { Arcade, Versus, Training, Survival, Watch, TimeAttack }
 
     /// <summary>
     /// Everything the fight screen needs to start one match. Built by the select screens and
@@ -27,6 +27,12 @@ namespace IK.Core {
         public int? P1StartLife;
         /// <summary>Optional music file for this match (Resources group "sound"), "" = stage's own.</summary>
         public string Music = "";
+        /// <summary>dev.6: team mode of both sides (Ikemen lets each side pick; the CPU side
+        /// follows the player's choice here).</summary>
+        public TeamMode Teams = TeamMode.Single;
+        /// <summary>dev.6: the members after the first of each side (empty in single mode).</summary>
+        public readonly List<PlayerSetup>[] Partners = { new List<PlayerSetup>(), new List<PlayerSetup>() };
+        public int TeamSize(int side) => 1 + Partners[side].Count;
     }
 
     public class PlayerSetup {

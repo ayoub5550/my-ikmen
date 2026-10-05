@@ -6,9 +6,9 @@ An Android fighting game built with **Unity**, based on the open-source **Ikemen
 
 ## الحالة / Status
 
-آخر مرحلة: **dev.5** — اللعبة كاملة الحلقة: شاشة العنوان، اختيار الشخصية واللون والساحة، أنماط Arcade و VS و Training و Survival و Watch، خصم يتحكم به الكمبيوتر، كل state controllers الأساسية، لغة ZSS، تحكم باللمس والذراع. التفاصيل والنواقص المعروفة في `docs/DEV5.md`.
+آخر مرحلة: **dev.6** — حلقات ZSS و`ignorehitpause`، إصلاح التفات الشخصيات، أنماط الفرق Turns و Tag (2-4 أعضاء)، Team Arcade و Team Versus و Time Attack، وموسيقى خلفية أصلية مولّدة بالكود. التفاصيل والنواقص في `docs/DEV6.md` (والمرحلة السابقة في `docs/DEV5.md`).
 
-Latest milestone: **dev.5** — the full game loop (title, select, VS, modes, CPU AI, ZSS). See `docs/DEV5.md`.
+Latest milestone: **dev.6** — ZSS loops, ignorehitpause, Turns/Tag teams, Team Arcade/Versus, Time Attack, original music. See `docs/DEV6.md` (and `docs/DEV5.md`).
 
 ## محتوى المستودع / Layout
 

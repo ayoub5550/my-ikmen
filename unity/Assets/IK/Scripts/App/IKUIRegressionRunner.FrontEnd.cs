@@ -275,6 +275,72 @@ namespace IK.EditorTools {
             app.Victory.Skip();
             Check(app.Current == Screen_.Select, "After the victory screen, watch mode returns to select");
 
+            // ---------------------------------------------------------------- dev.6: team versus (tag) by taps, then a whole team match
+            app.Show(Screen_.Title);
+            yield return null;
+            var tv = app.Title.Items.Find(i => i.Id == "teamversus");
+            Check(tv != null && app.Title.Items.Exists(i => i.Id == "teamarcade") && app.Title.Items.Exists(i => i.Id == "timeattack"),
+                  "Title offers TEAM ARCADE, TEAM VERSUS and TIME ATTACK");
+            if (tv != null) {
+                app.Title.Select("teamversus");
+                app.Title.Activate();
+                yield return null;
+                Check(app.Current == Screen_.Select && sel.TeamGame && sel.Current == SelectScreen.Phase.Team,
+                      "Team Versus starts on the team menu (" + sel.Current + ")");
+                sel.View.Top.Find("Right").GetComponent<Button>().onClick.Invoke();   // Turns x2 -> Turns x3
+                sel.Change(1); sel.Change(1);                                          // -> Tag x2
+                Check(sel.Teams == TeamMode.Tag && sel.TeamSize == 2, "The arrows choose Tag x 2 (" + sel.ValueText() + ")");
+                sel.Step(2);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "select-team.png");
+                sel.Confirm();
+                var g = sel.View.Top.Find("grid");
+                g.Find("cell0").GetComponent<Button>().onClick.Invoke();               // leader: kfm_zss
+                Check(sel.Current == SelectScreen.Phase.P1Char, "After the leader the grid asks for member 2");
+                g.Find("cell3").GetComponent<Button>().onClick.Invoke();               // move to kfm
+                g.Find("cell3").GetComponent<Button>().onClick.Invoke();               // confirm member 2
+                Check(sel.Current == SelectScreen.Phase.P1Pal && sel.P1Partners.Count == 1 && sel.P1Partners[0].CharDef == "kfm.def",
+                      "Member 2 picked (" + sel.Current + ", " + sel.P1Partners.Count + ")");
+                sel.Confirm();                                                         // palette
+                g.Find("cell1").GetComponent<Button>().onClick.Invoke(); g.Find("cell1").GetComponent<Button>().onClick.Invoke();
+                g.Find("cell0").GetComponent<Button>().onClick.Invoke(); g.Find("cell0").GetComponent<Button>().onClick.Invoke();
+                while (sel.Current != SelectScreen.Phase.Done && app.Current == Screen_.Select) { sel.Confirm(); yield return null; }
+                var tm = app.Flow.Current;
+                Check(tm != null && tm.Teams == TeamMode.Tag && tm.TeamSize(0) == 2 && tm.TeamSize(1) == 2 &&
+                      tm.Partners[1].Count == 1 && tm.Partners[1][0].CharGroup == "chars/kfm_zss",
+                      "MatchSetup is a 2-vs-2 tag match with the picked opponents");
+                app.Versus.Step(40);
+                app.Versus.Skip();
+                yield return null; yield return null;
+                var e6 = app.Fight.Engine;
+                Check(app.Current == Screen_.Fight && e6 != null && e6.Teams == TeamMode.Tag && e6.Team[0].Count == 2 && e6.Team[1].Count == 2,
+                      "The fight runs both teams" + (app.Fight.LoadError != null ? ": " + app.Fight.LoadError : ""));
+                Button tagBtn = null;
+                foreach (var b in app.Fight.Root.GetComponentsInChildren<Button>(true)) if (b.name == "Tag") tagBtn = b;
+                Check(tagBtn != null && tagBtn.gameObject.activeInHierarchy, "The TAG button is shown in a tag match");
+                if (e6 != null && tagBtn != null) {
+                    int guard = 0;
+                    while (!e6.CanTag(0) && guard++ < 600) app.Fight.Feed(new InputFrame());
+                    var before = e6.P1;
+                    tagBtn.onClick.Invoke();
+                    app.Fight.Feed(new InputFrame());
+                    Check(e6.P1 != before && e6.P1 == e6.Team[0][1], "Tapping TAG swaps in the partner (" + e6.P1.Character.Name + ")");
+                    Canvas.ForceUpdateCanvases();
+                    yield return null;
+                    CaptureFrame(Dir + "fight-tag.png");
+                    var line = app.Fight.Root.Find("teamLine");
+                    Check(line != null && line.GetComponent<Text>().text.Length > 0, "The team line shows who is left");
+                    Check(app.Music != null && app.Music.Current.StartsWith("fight"), "A fight track plays (" + (app.Music != null ? app.Music.Current : "") + ")");
+                    // play it out CPU vs CPU with short rounds: the match must end by itself
+                    app.Fight.Setup.Players[0].AiLevel = 0;
+                    e6.TimerCount = 5;
+                    int t6 = 0;
+                    while (app.Current == Screen_.Fight && t6 < 20000) { app.Fight.Feed(new InputFrame()); t6++; }
+                    Check(app.Current == Screen_.Victory, "The tag match ends and shows the victory screen (" + app.Current + ", " + t6 + " ticks)");
+                }
+            }
+
             SettingsStore.Current.language = saved;
             Loc.Apply(saved);
             app.Show(Screen_.Main);

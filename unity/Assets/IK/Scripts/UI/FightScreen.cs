@@ -38,6 +38,11 @@ namespace IK.UI {
         public int Ticks { get; private set; }
         public MatchSetup Setup { get; private set; }
         public readonly CpuAI[] Ai = new CpuAI[2];
+        /// <summary>dev.6: one CPU brain per team member (the member on the field uses its own).</summary>
+        readonly Dictionary<Fighter, CpuAI> aiByFighter = new Dictionary<Fighter, CpuAI>();
+        Text teamLine;
+        GameObject tagButton;
+        bool tagPressed;
         public bool PausedByPlayer { get; private set; }
         /// <summary>Sprites drawn in the last frame (rendered checks).</summary>
         public int DrawnSprites { get; private set; }
@@ -164,6 +169,12 @@ namespace IK.UI {
                          Loc.T("viewer.boxes"), () => { showBoxes = !showBoxes; Redraw(); }, 22).gameObject);
             UIKit.Button(Root, "Pause", new Vector2(0.5f, 1f), new Vector2(0, -110), new Vector2(110, 48),
                          "II", TogglePause, 24);
+            // dev.6 teams: who is left on each side, and the tag button (the `w` key)
+            teamLine = UIKit.Text(Root, "teamLine", new Vector2(0.5f, 1f), new Vector2(0, -150), new Vector2(900, 30),
+                                  "", 22, TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.6f, 0.95f));
+            tagButton = UIKit.Button(Root, "Tag", new Vector2(0.5f, 0f), new Vector2(0, 60), new Vector2(150, 64),
+                                     Loc.T("fight.tag"), () => tagPressed = true, 26).gameObject;
+            tagButton.SetActive(false);
 
             // pause menu
             pausePanel = UIKit.Panel(Root, "PauseMenu", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
@@ -343,13 +354,20 @@ namespace IK.UI {
                         Engine.RoundsToWin = setup.RoundsToWin;
                         Engine.TimerCount = setup.RoundTime;
                     }
+                    if (setup.Teams != TeamMode.Single) BuildTeams(setup, p1, p2);
                     Engine.StartRound(1);
                     if (setup.P1StartLife.HasValue) p1.Life = Mathf.Clamp(setup.P1StartLife.Value, 1, p1.LifeMax);
                 }
+                aiByFighter.Clear();
                 for (int i = 0; i < 2; i++) {
                     var f = Engine.Players[i];
                     Ai[i] = f.AiLevel > 0 ? new CpuAI(f, f.AiLevel, 11 + i) : null;
+                    if (Ai[i] != null) aiByFighter[f] = Ai[i];
+                    int seed = 21 + i;
+                    foreach (var m in Engine.Team[i])
+                        if (m != f && m.AiLevel > 0) aiByFighter[m] = new CpuAI(m, m.AiLevel, seed += 2);
                 }
+                if (tagButton != null) tagButton.SetActive(Engine.Teams == TeamMode.Tag && Engine.Team[0].Count > 1 && Engine.P1.AiLevel == 0);
                 Ticks = 0;
                 resultSent = false;
             } catch (Exception e) {
@@ -360,6 +378,31 @@ namespace IK.UI {
             watch.Stop();
             LoadMilliseconds = watch.Elapsed.TotalMilliseconds;
             return Engine != null;
+        }
+
+        /// <summary>dev.6: loads the partners of both sides and hands the teams to the engine.</summary>
+        void BuildTeams(MatchSetup setup, Fighter p1, Fighter p2) {
+            Engine.Teams = setup.Teams;
+            var leaders = new[] { p1, p2 };
+            for (int side = 0; side < 2; side++) {
+                var members = new List<Fighter> { leaders[side] };
+                foreach (var ps in setup.Partners[side]) {
+                    var lc = LoadChar(new ResourcesSource(ps.CharGroup), ps.CharGroup + ":" + ps.CharDef, ps.CharDef);
+                    var m = new Fighter(lc.Chr, lc.States, lc.Cmd);
+                    m.PaletteNo = Math.Max(1, ps.Palette);
+                    m.AiLevel = ps.AiLevel;
+                    members.Add(m);
+                }
+                Engine.SetTeam(side, members);
+            }
+        }
+
+        string TeamText() {
+            if (Engine == null || Engine.Teams == TeamMode.Single) return "";
+            string a = string.Format(Loc.T("fight.team"), Engine.Alive(0), Engine.TeamSize(0));
+            string b = string.Format(Loc.T("fight.team"), Engine.Alive(1), Engine.TeamSize(1));
+            string mode = Loc.T(Engine.Teams == TeamMode.Tag ? "fe.teamTag" : "fe.teamTurns").Replace(" × {0}", "");
+            return mode + " · " + a + "  |  " + b;
         }
 
         /// <summary>
@@ -420,12 +463,17 @@ namespace IK.UI {
             if (Engine == null || PausedByPlayer) return;
             var keys = new CmdKey[2];
             for (int i = 0; i < 2; i++) {
+                // the member on the field may have changed (tag / turns): use its own brain
+                if (Engine.Teams != TeamMode.Single && aiByFighter.TryGetValue(Engine.Players[i], out var brain)) Ai[i] = brain;
+            }
+            for (int i = 0; i < 2; i++) {
                 var f = Engine.Players[i];
                 if (Ai[i] != null && (i == 0 || DummyMode == 4 || Setup != null && Setup.Players[1].AiLevel > 0))
                     keys[i] = Ai[i].Tick(f, Engine.Players[1 - i], Engine);
                 else if (i == 0) keys[i] = TrainingScreen.ToCmdKey(frame, f.Facing);
                 else keys[i] = DummyInput();
             }
+            if (tagPressed) { keys[0] |= CmdKey.w; tagPressed = false; }
             Engine.Tick(keys[0], keys[1]);
             Ticks++;
             if (Setup != null && Setup.Mode == GameMode.Training) TrainingRefill();
@@ -760,6 +808,7 @@ namespace IK.UI {
             }
             if (timer != null)
                 UIKit.SetText(timer, Engine.TimeLeft >= 0 ? Engine.TimeLeft.ToString() : "--");
+            if (teamLine != null) UIKit.SetText(teamLine, TeamText());
             if (debugLine != null) {
                 bool dev = Setup == null || Setup.Mode == GameMode.Training;
                 debugLine.enabled = dev;

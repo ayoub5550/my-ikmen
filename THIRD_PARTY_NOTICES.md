@@ -16,3 +16,9 @@ Their original licence files are kept unchanged next to them.
 - **Kung Fu Man (`chars/kfm*`) and its stage (`stages/kfm.*`)**: Elecbyte sample content with no clear commercial licence. Treat as **placeholder only**; replace with original characters before a commercial release.
   - Since dev.2 a copy of KFM (`kfm.def/.sff/.air/.snd`, ~330 KB) ships **inside the APK** at `unity/Assets/IK/Resources/chars/kfm/` so the loaders have real data to read. It is development/test content: **it must be removed or replaced before any paid or ad-supported release** (dev.7 checklist).
 - `.github/` workflows from both upstream repos were intentionally **not** copied (they would run upstream CI in this repo).
+
+## Background music (dev.6)
+
+`unity/Assets/IK/Resources/music/*.ogg` are **original** tracks synthesised by
+`tools/music/compose.py` from code (oscillators, noise and a seeded melody generator; no samples
+or third-party recordings). They are part of this project and covered by its MIT licence.

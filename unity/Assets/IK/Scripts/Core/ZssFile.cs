@@ -23,6 +23,12 @@ namespace IK.Core {
     public static class ZssFile {
         public const string LetType = "zss_let";
         public const string ExprType = "zss_expr";
+        /// <summary>dev.6: a `for` / `while` block; its body is in <see cref="StateController.Children"/>.</summary>
+        public const string LoopType = "zss_loop";
+        public const string BreakType = "zss_break";
+        public const string ContinueType = "zss_continue";
+        /// <summary>Ikemen's safety limit on loop iterations (bytecode.go `MaxLoop`).</summary>
+        public const int MaxLoop = 2500;
 
         class Function {
             public string Name;
@@ -114,6 +120,8 @@ namespace IK.Core {
         class Compiler {
             public Dictionary<string, Function> Functions;
             public StateDef Def;
+            /// <summary>Where compiled controllers go: the statedef, or the body of a loop.</summary>
+            public List<StateController> Target;
             int inlineCount;
             int depth;
 
@@ -205,11 +213,51 @@ namespace IK.Core {
                         i = end + 1;
                         continue;
                     }
-                    if (Word(text, i, "switch") || Word(text, i, "for") || Word(text, i, "while")) {
-                        Warnings.Add("zss: '" + text.Substring(i, Math.Min(12, text.Length - i)) + "' not supported in statedef " + Def.No);
+                    if (Word(text, i, "break") || Word(text, i, "continue")) {
+                        bool brk = Word(text, i, "break");
+                        var bc = new StateController { Type = brk ? BreakType : ContinueType, Name = brk ? "break" : "continue" };
+                        Finish(bc, cond, persist, ihp);
+                        int end = FindTop(text, i, ';');
+                        i = end < 0 ? text.Length : end + 1;
+                        continue;
+                    }
+                    if (Word(text, i, "switch")) {
+                        i += 6;
                         int open = FindTop(text, i, '{');
                         if (open < 0) break;
-                        i = Match(text, open, '{', '}') + 1;
+                        string head = Locals(text.Substring(i, open - i).Trim());
+                        int close = Match(text, open, '{', '}');
+                        Switch(head, text.Substring(open + 1, Math.Max(0, close - open - 1)), cond, persist, ihp, level);
+                        i = close + 1;
+                        continue;
+                    }
+                    if (Word(text, i, "for") || Word(text, i, "while")) {
+                        bool isFor = Word(text, i, "for");
+                        i += isFor ? 3 : 5;
+                        int open = FindTop(text, i, '{');
+                        if (open < 0) break;
+                        string head = text.Substring(i, open - i).Trim();
+                        int close = Match(text, open, '{', '}');
+                        string inner = text.Substring(open + 1, Math.Max(0, close - open - 1));
+                        i = close + 1;
+                        var loop = new StateController { Type = LoopType, Name = isFor ? "for" : "while" };
+                        loop.Children = new List<StateController>();
+                        if (isFor) {
+                            var parts = SplitTop(head, ';');
+                            var m = Regex.Match(parts[0].Trim(), @"^\$?([A-Za-z_]\w*)\s*=(?!=)(.*)$", RegexOptions.Singleline);
+                            if (m.Success) {
+                                loop.Params["var"] = m.Groups[1].Value.ToLowerInvariant();
+                                loop.Params["begin"] = Locals(m.Groups[2].Value.Trim());
+                            } else loop.Params["begin"] = Locals(parts[0].Trim());
+                            if (parts.Count < 2) { Warnings.Add("zss: for loop needs two expressions in statedef " + Def.No); continue; }
+                            loop.Params["end"] = Locals(parts[1].Trim());
+                            loop.Params["incr"] = parts.Count > 2 && parts[2].Trim().Length > 0 ? Locals(parts[2].Trim()) : "1";
+                        } else loop.Params["cond"] = Locals(head);
+                        Finish(loop, cond, persist, ihp);
+                        var saved = Target;
+                        Target = loop.Children;
+                        Block(inner, "", -1, ihp, level + 1);   // `persistent` belongs to the block
+                        Target = saved;
                         continue;
                     }
                     // sctrl: name { params } — or an expression statement `sysvar(1) := 0;`
@@ -233,6 +281,41 @@ namespace IK.Core {
                     }
                     AddController(type, parms, cond, persist, ihp);
                 }
+            }
+
+            /// <summary>`switch x { case a; b: ... default: ... }` → an if / else-if chain, like
+            /// compiler.go `switchBlock` (no fall-through; `default` is the last else).</summary>
+            void Switch(string head, string body, string cond, int persist, int ihp, int level) {
+                // top-level `case` / `default` labels
+                var labels = new List<int>();
+                int d = 0; bool str = false;
+                for (int k = 0; k < body.Length; k++) {
+                    char ch = body[k];
+                    if (ch == '"') { str = !str; continue; }
+                    if (str) continue;
+                    if (ch == '{' || ch == '(' || ch == '[') d++;
+                    else if (ch == '}' || ch == ')' || ch == ']') d = Math.Max(0, d - 1);
+                    else if (d == 0 && (Word(body, k, "case") || Word(body, k, "default"))) labels.Add(k);
+                }
+                string prev = null, defaultBody = null;
+                for (int n = 0; n < labels.Count; n++) {
+                    int at = labels[n];
+                    int stop = n + 1 < labels.Count ? labels[n + 1] : body.Length;
+                    bool isDefault = Word(body, at, "default");
+                    int colon = FindTop(body, at, ':');
+                    if (colon < 0 || colon > stop) continue;
+                    string caseBody = body.Substring(colon + 1, stop - colon - 1);
+                    if (isDefault) { defaultBody = caseBody; continue; }
+                    var values = SplitTop(body.Substring(at + 4, colon - at - 4), ';');
+                    var ors = new List<string>();
+                    foreach (var v in values) if (v.Trim().Length > 0) ors.Add("(" + head + ") = (" + Locals(v.Trim()) + ")");
+                    if (ors.Count == 0) continue;
+                    string c = string.Join(" || ", ors);
+                    string full = prev == null ? c : prev + " && (" + c + ")";
+                    Block(caseBody, And(cond, full), persist, ihp, level + 1);
+                    prev = prev == null ? "!(" + c + ")" : prev + " && !(" + c + ")";
+                }
+                if (defaultBody != null) Block(defaultBody, And(cond, prev ?? "1"), persist, ihp, level + 1);
             }
 
             string Inline(string callText, string cond, int persist, int ihp, int level) {
@@ -291,7 +374,7 @@ namespace IK.Core {
                 c.Persistent = persist < 0 ? 1 : persist;
                 c.IgnoreHitPause = ihp;
                 c.TriggerAll.Add(Expr.Parse(string.IsNullOrWhiteSpace(cond) ? "1" : cond));
-                Def.Controllers.Add(c);
+                (Target ?? Def.Controllers).Add(c);
             }
         }
 

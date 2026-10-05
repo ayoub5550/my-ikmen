@@ -170,31 +170,94 @@ namespace IK.Core {
             return CommonZss.Get(no);
         }
 
-        void RunState(int no) {
+        void RunState(int no) { RunState(no, false); }
+
+        /// <summary>Runs one state's controllers. <paramref name="hitPause"/>: only the
+        /// controllers marked `ignorehitpause` run (char.go during hit pause; dev.6).</summary>
+        void RunState(int no, bool hitPause) {
             var def = no < 0 ? ActiveStates?.Get(no) : ResolveState(no);
             if (def == null) return;
             if (ZssLocals.Count > 0) ZssLocals.Clear();
-            if (no >= 0) ApplyStatedefParams(def);
-            foreach (var c in def.Controllers) {
+            if (no >= 0 && !hitPause) ApplyStatedefParams(def);
+            RunControllers(def.Controllers, hitPause);
+        }
+
+        enum Flow { Next, Stop, Break, Continue }
+
+        Flow RunControllers(List<StateController> list, bool hitPause) {
+            foreach (var c in list) {
+                bool block = c.Children != null;
+                if (hitPause && !block && c.IgnoreHitPause == 0) continue;
                 if (c.Persistent == 0) {
                     ranThisState.TryGetValue(c, out var ran);
                     if (ran > 0) continue;
                 }
                 if (!c.TriggersPass(this)) continue;
+                if (block) {
+                    if (c.Persistent == 0) ranThisState[c] = 1;
+                    var f = RunLoop(c, hitPause);
+                    if (f == Flow.Stop) return f;
+                    continue;
+                }
+                if (c.Type == ZssFile.BreakType) return Flow.Break;
+                if (c.Type == ZssFile.ContinueType) return Flow.Continue;
                 if (c.Persistent == 0) ranThisState[c] = 1;
                 int stateBefore = StateNo;
                 Apply(c);
-                if (StateNo != stateBefore) return;    // ChangeState: the rest is skipped
+                if (StateNo != stateBefore) return Flow.Stop;    // ChangeState: the rest is skipped
             }
+            return Flow.Next;
+        }
+
+        /// <summary>ZSS `for` / `while` (bytecode.go `StateBlock.Run`): `for` evaluates begin,
+        /// end and increment once, the end is inclusive; at most <see cref="ZssFile.MaxLoop"/>
+        /// iterations.</summary>
+        Flow RunLoop(StateController c, bool hitPause) {
+            bool isFor = c.Name == "for";
+            string v = c.Get("var");
+            int cur = 0, end = 0, inc = 0;
+            if (isFor) {
+                cur = EvalInt(c.Get("begin"));
+                if (v.Length > 0) ZssLocals[v] = cur;
+                end = EvalInt(c.Get("end"));
+                inc = EvalInt(c.Get("incr", "1"));
+                if (!(inc > 0 ? cur <= end : inc < 0 ? cur >= end : true)) return Flow.Next;
+            }
+            for (int n = 0; n < ZssFile.MaxLoop; n++) {
+                if (!isFor && !EvalBool(c.Get("cond"))) break;
+                var f = RunControllers(c.Children, hitPause);
+                if (f == Flow.Stop) return f;
+                if (f == Flow.Break) break;
+                if (isFor) {
+                    if (v.Length > 0) { ZssLocals.TryGetValue(v, out var lv); cur = (int)lv; }
+                    cur += inc;
+                    if (!(inc > 0 ? cur <= end : inc < 0 ? cur >= end : true)) break;
+                    if (v.Length > 0) ZssLocals[v] = cur;
+                }
+            }
+            return Flow.Next;
+        }
+
+        /// <summary>dev.6: one frame of hit pause. Ikemen still walks the states but runs only
+        /// the `ignorehitpause` controllers (char.go `actionRun`, bytecode.go
+        /// `ctrlsIgnorehitpause`).</summary>
+        public void TickHitPause() {
+            if (!IsHelper) RunState(-4, true);
+            if (!IsHelper && ForeignStates == null) RunState(-3, true);
+            if (!IsHelper) RunState(-2, true);
+            if (!IsHelper || KeyCtrl) RunState(-1, true);
+            if (ResolveState(StateNo) != null) RunState(StateNo, true);
         }
 
         bool statedefApplied;
         void ApplyStatedefParams(StateDef def) {
             if (statedefApplied) return;
             statedefApplied = true;
-            if (def.Has("type")) Type = ParseStateType(def.Get("type"), Type);
-            if (def.Has("movetype")) Move = ParseMoveType(def.Get("movetype"), Move);
-            if (def.Has("physics")) Phys = ParsePhysics(def.Get("physics"), Phys);
+            // an omitted type / movetype / physics means S / I / N, not "unchanged"
+            // (bytecode.go newStateBytecode; only an explicit U keeps the current value)
+            Type = def.Has("type") ? ParseStateType(def.Get("type"), Type) : StateType.Standing;
+            Move = def.Has("movetype") ? ParseMoveType(def.Get("movetype"), Move) : MoveType.Idle;
+            Phys = def.Has("physics") ? ParsePhysics(def.Get("physics"), Phys) : Physics.None;
             if (def.Has("anim")) ChangeAnim(EvalInt(def.Get("anim")));
             if (def.Has("ctrl")) Ctrl = EvalInt(def.Get("ctrl")) != 0;
             if (def.Has("velset")) {
@@ -705,5 +768,6 @@ namespace IK.Core {
         }
 
         public int EvalInt(string expression) => (int)Math.Round(EvalFloat(expression));
+        public bool EvalBool(string expression) => Math.Abs(EvalFloat(expression)) > 0.0001f;
     }
 }
