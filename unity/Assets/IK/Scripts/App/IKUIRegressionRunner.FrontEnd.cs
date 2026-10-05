@@ -23,6 +23,9 @@ namespace IK.EditorTools {
         IEnumerator FrontEndBoot(IKApp app) {
             Check(app.Current == Screen_.Title && app.Title.Visible && !app.Menu.Visible,
                   "Boots into the title screen");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (!MotifAssets.Ready && sw.ElapsedMilliseconds < 60000) yield return null;
+            Check(MotifAssets.Ready, "system.sff / system.snd decode in the background (" + sw.ElapsedMilliseconds + " ms after boot)");
             Check(MotifAssets.Motif.Sprites != null && MotifAssets.Motif.Sprites.Sprites.Count == 296,
                   "system.def + system.sff load from Resources" + (MotifAssets.LoadError != null ? ": " + MotifAssets.LoadError : ""));
             Check(MotifAssets.Motif.Sounds != null, "system.snd loads from Resources");

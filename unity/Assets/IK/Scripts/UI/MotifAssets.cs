@@ -77,18 +77,56 @@ namespace IK.UI {
             }
         }
 
+        static System.Threading.Tasks.Task<(SffFile, SndFile)> loading;
+
+        /// <summary>
+        /// The motif. system.def is parsed at once (screens lay themselves out from it); the
+        /// 9 MB system.sff and 3.6 MB system.snd are decoded on a worker thread (pure C#, no
+        /// Unity API) so the app shows its first frame immediately — see <see cref="Ready"/>.
+        /// Until then motif sprites and sounds are simply absent.
+        /// </summary>
         public static Motif Motif {
             get {
-                if (motif != null) return motif;
+                if (motif != null) { Poll(); return motif; }
+                byte[] def = null, sff = null, snd = null;
                 try {
-                    motif = Motif.Load(Source, MotifDef);
-                    if (motif.Sprites == null) LoadError = "system.sff missing";
+                    var src = Source;
+                    def = src.Read(MotifDef);
+                    if (def == null) throw new System.IO.FileNotFoundException(MotifDef);
+                    motif = Motif.Parse(def, MotifDef);
+                    sff = motif.SprFile.Length > 0 ? src.Read(motif.SprFile) : null;
+                    snd = motif.SndFile.Length > 0 ? src.Read(motif.SndFile) : null;
+                    if (sff == null) LoadError = "system.sff missing";
                 } catch (Exception e) {
                     LoadError = "motif: " + e.Message;
                     motif = Motif.Parse("", MotifDef);
                 }
+                var sffBytes = sff; var sndBytes = snd;
+                loading = System.Threading.Tasks.Task.Run(() => {
+                    SffFile f = sffBytes != null ? SffFile.Load(sffBytes, false) : null;
+                    SndFile w = null;
+                    if (sndBytes != null) { try { w = SndFile.Load(sndBytes); } catch (Exception) { w = null; } }
+                    return (f, w);
+                });
                 return motif;
             }
+        }
+
+        /// <summary>True once system.sff / system.snd are decoded (or failed).</summary>
+        public static bool Ready { get { var _ = Motif; Poll(); return loading == null; } }
+
+        /// <summary>Blocks until the motif art is decoded (tests, or a screen that cannot wait).</summary>
+        public static void WaitReady() {
+            var _ = Motif;
+            if (loading != null) { try { loading.Wait(); } catch (Exception) { } }
+            Poll();
+        }
+
+        static void Poll() {
+            if (loading == null || !loading.IsCompleted) return;
+            if (loading.IsFaulted) LoadError = "motif art: " + (loading.Exception != null ? loading.Exception.GetBaseException().Message : "failed");
+            else { motif.Sprites = loading.Result.Item1; motif.Sounds = loading.Result.Item2; }
+            loading = null;
         }
 
         public static IResourceSource Source => new ResourcesSource(DataGroup);
@@ -97,7 +135,8 @@ namespace IK.UI {
 
         /// <summary>Unity sprite of the motif SFF, or null.</summary>
         public static Sprite MotifSprite(int group, int number, out SffSprite raw) {
-            raw = Motif.Sprites != null ? Motif.Sprites.Get(group, number) : null;
+            var m = Motif;
+            raw = m.Sprites != null ? m.Sprites.Get(group, number) : null;
             if (raw == null || raw.IsBlank) return null;
             return MotifCache.SpriteFor(Motif.Sprites, raw);
         }
@@ -204,6 +243,7 @@ namespace IK.UI {
 
         /// <summary>Drops every cached asset (tests, language reloads keep using the cache).</summary>
         public static void Clear() {
+            WaitReady();
             motif = null; roster = null;
             if (motifCache != null) motifCache.Dispose();
             motifCache = null;

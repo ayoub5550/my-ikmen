@@ -31,10 +31,21 @@ namespace IK.UI {
         protected int FadeInTicks;
 
         /// <summary>Creates the motif view (and its fade overlay) for this screen.</summary>
+        string bgPrefix;
+        bool bgBuilt;
+
         protected void CreateView(RectTransform parent, string name, string bgPrefix) {
             View = new MotifView(parent, name);
-            if (!string.IsNullOrEmpty(bgPrefix)) View.SetBackground(bgPrefix);
+            this.bgPrefix = bgPrefix;
+            EnsureBackground();
             fade = UIKit.Image(View.Root, "fade", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(4000, 4000), null, new Color(0, 0, 0, 0));
+        }
+
+        /// <summary>Builds the motif background once system.sff has been decoded (MotifAssets.Ready).</summary>
+        protected void EnsureBackground() {
+            if (bgBuilt || View == null || string.IsNullOrEmpty(bgPrefix) || !MotifAssets.Ready) return;
+            bgBuilt = true;
+            View.SetBackground(bgPrefix);
         }
 
         /// <summary>Keeps the fade overlay above everything built after <see cref="CreateView"/>.</summary>
@@ -65,6 +76,7 @@ namespace IK.UI {
 
         /// <summary>Runs one 60 Hz tick now (rendered tests step screens deterministically).</summary>
         public void Step(int ticks = 1) {
+            EnsureBackground();
             for (int i = 0; i < ticks; i++) {
                 if (View != null) View.Tick();
                 Ticks++;
