@@ -193,6 +193,87 @@ namespace IK.EditorTools {
             Check(SettingsStore.Current.ActiveLayout().Get(ControlId.HP).position == ControlLayout.Default().Get(ControlId.HP).position,
                   "Reset restores the default layout");
 
+            // ---- 12. dev.2: the character viewer and the MUGEN loaders ----
+            app.Show(Screen_.Main);
+            yield return null;
+            app.Menu.Root.Find("Viewer").GetComponent<Button>().onClick.Invoke();
+            yield return null; yield return null;
+            var viewer = app.Viewer;
+            Check(app.Current == Screen_.Viewer && viewer.Visible, "Menu opens the character viewer");
+            Check(viewer.Character != null, "Character loads from Resources" +
+                  (viewer.LoadError != null ? ": " + viewer.LoadError : ""));
+            if (viewer.Character != null) {
+                var chr = viewer.Character;
+                Check(chr.DisplayName == "Kung Fu Man" && chr.Author == "Elecbyte",
+                      "DEF header read: " + chr.DisplayName + " / " + chr.Author);
+                Check(chr.Sff.Sprites.Count == 281 && chr.Sff.Palettes.Count == 16,
+                      "SFF read on device path: " + chr.Sff.Sprites.Count + " sprites, " +
+                      chr.Sff.Palettes.Count + " palettes");
+                Check(chr.Air != null && chr.Air.Actions.Count == 117,
+                      "AIR read on device path: " + (chr.Air != null ? chr.Air.Actions.Count : 0) + " actions");
+                Check(chr.Snd != null && chr.Snd.Entries.Count == 12,
+                      "SND read on device path: " + (chr.Snd != null ? chr.Snd.Entries.Count : 0) + " sounds");
+                Check(viewer.LoadMilliseconds < 8000, "Character loads in " +
+                      Mathf.RoundToInt((float)viewer.LoadMilliseconds) + " ms");
+
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "viewer.png");
+                Check(CountSpritePixels(Dir + "viewer.png") > 1500, "The character sprite is actually drawn");
+
+                // the standing action must advance exactly as the .air times it
+                var stand = chr.Air.Get(0);
+                stand.Reset();
+                Check(stand.CurrentElement == 0, "Action 0 starts on its first element");
+                for (int i = 0; i < 10; i++) stand.Tick();
+                Check(stand.CurrentElement == 1, "Element 1 after its 10 ticks (got " + stand.CurrentElement + ")");
+                for (int i = 0; i < 7; i++) stand.Tick();
+                Check(stand.CurrentElement == 2, "Element 2 after 7 more ticks (got " + stand.CurrentElement + ")");
+
+                viewer.StepAction(1);
+                yield return null;
+                Check(viewer.CurrentAction != 0, "Next steps to another action (" + viewer.CurrentAction + ")");
+                viewer.StepAction(-1);
+                yield return null;
+                Check(viewer.CurrentAction == 0, "Prev steps back to action 0");
+
+                // a palette swap must change what is on screen (paused, so only the palette moves)
+                viewer.SetPlayingForTests(false);
+                viewer.SelectActionNumber(0);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "viewer-pal0.png");
+                viewer.CyclePaletteForTests();
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "viewer-pal1.png");
+                Check(DifferentPixels(Dir + "viewer-pal0.png", Dir + "viewer-pal1.png") > 400,
+                      "Cycling the SFF palette repaints the character");
+                viewer.ResetPaletteForTests();
+
+                // collision boxes come from the .air and must be drawable
+                viewer.ShowBoxesForTests(true);
+                Canvas.ForceUpdateCanvases();
+                yield return null;
+                CaptureFrame(Dir + "viewer-boxes.png");
+                Check(DifferentPixels(Dir + "viewer-pal0.png", Dir + "viewer-boxes.png") > 400,
+                      "Clsn boxes from the .air are drawn over the sprite");
+                viewer.ShowBoxesForTests(false);
+                viewer.SetPlayingForTests(true);
+
+                // every playable action resolves a sprite for at least one element
+                int broken = 0;
+                foreach (var no in chr.PlayableActions()) {
+                    var a = chr.Air.Get(no);
+                    bool any = false;
+                    foreach (var f in a.Frames) if (chr.SpriteOf(f) != null) { any = true; break; }
+                    if (!any) broken++;
+                }
+                Check(broken == 0, "Every playable action resolves its sprites (broken=" + broken + ")");
+            }
+            app.Show(Screen_.Main);
+            yield return null;
+
             // ---- 11. labels render in both languages ----
             app.Show(Screen_.Main);
             yield return null;
@@ -282,6 +363,37 @@ namespace IK.EditorTools {
                 }
             Check(changed > 300, id + " pressed state is visible (changed pixels=" + changed + ")");
             DestroyImmediate(normal); DestroyImmediate(pressed);
+        }
+
+        /// <summary>Pixels inside the viewer stage that are not the flat background.</summary>
+        int CountSpritePixels(string path) {
+            var image = new Texture2D(2, 2);
+            image.LoadImage(File.ReadAllBytes(path));
+            var bg = new Color(0.07f, 0.08f, 0.11f);
+            int count = 0;
+            for (int y = image.height / 8; y < image.height * 7 / 8; y++)
+                for (int x = image.width / 4; x < image.width * 3 / 4; x++) {
+                    var c = image.GetPixel(x, y);
+                    if (Mathf.Abs(c.r - bg.r) + Mathf.Abs(c.g - bg.g) + Mathf.Abs(c.b - bg.b) > 0.12f) count++;
+                }
+            DestroyImmediate(image);
+            return count;
+        }
+
+        /// <summary>How many pixels differ between two captures.</summary>
+        int DifferentPixels(string a, string b) {
+            var ia = new Texture2D(2, 2); ia.LoadImage(File.ReadAllBytes(a));
+            var ib = new Texture2D(2, 2); ib.LoadImage(File.ReadAllBytes(b));
+            int n = 0;
+            int w = Mathf.Min(ia.width, ib.width), h = Mathf.Min(ia.height, ib.height);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) {
+                    var ca = ia.GetPixel(x, y);
+                    var cb = ib.GetPixel(x, y);
+                    if (Mathf.Abs(ca.r - cb.r) + Mathf.Abs(ca.g - cb.g) + Mathf.Abs(ca.b - cb.b) > 0.1f) n++;
+                }
+            DestroyImmediate(ia); DestroyImmediate(ib);
+            return n;
         }
 
         void CheckLabelPixels(string path, RectInt region, string name) {
